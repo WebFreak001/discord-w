@@ -1,5 +1,7 @@
 module app;
 
+import std.algorithm;
+import std.conv;
 import std.stdio;
 import std.string;
 import std.typecons;
@@ -37,6 +39,28 @@ class MyGateway : DiscordGateway
 		{
 			// bot.channel binds the HTTP channel API to this channel with the bot token and caches it
 			bot.channel(m.channel_id).sendMessage("pong!");
+		}
+		else if (m.mentions.canFind!(user => user.id == this.info.user.id))
+		{
+			string content;
+			if (m.content.startsWith("<@" ~ this.info.user.id.toString ~ ">"))
+				content = m.content[("<@" ~ this.info.user.id.toString ~ ">").length .. $].strip;
+			else if (m.content.startsWith("<@!" ~ this.info.user.id.toString ~ ">"))
+				content = m.content[("<@!" ~ this.info.user.id.toString ~ ">").length .. $].strip;
+			else
+				return;
+			// starting a message by @-ing bot
+			if (content.startsWith("say "))
+			{
+				runTask({ bot.channel(m.channel_id).sendMessage(content[4 .. $]); });
+				bot.channel(m.channel_id).deleteMessage(m.id);
+			}
+			else if (content.startsWith("react"))
+			{
+				bot.channel(m.channel_id).react(m.id, Emoji.builtin("❌"));
+				bot.channel(m.channel_id).react(m.id,
+					Emoji.named(Snowflake(346759581546053648UL), "PagChomp"));
+			}
 		}
 	}
 }

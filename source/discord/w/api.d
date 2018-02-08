@@ -8,6 +8,7 @@ import std.typecons;
 import std.uri;
 
 import vibe.core.core;
+import vibe.core.log;
 import vibe.data.json;
 import vibe.http.client;
 import vibe.inet.url;
@@ -105,6 +106,8 @@ HTTPRateLimit httpRateLimit;
 Json requestDiscordEndpoint(string route, string endpoint = "",
 		void delegate(scope HTTPClientRequest req) @safe requester = null) @safe
 {
+	(() @trusted => logDebug("Requesting Discord API Route %s (with rate limit endpoint %s)",
+			route, endpoint))();
 	if (!endpoint.length)
 		endpoint = route;
 	assert(route.length && route[0] == '/');
@@ -124,6 +127,7 @@ Json requestDiscordEndpoint(string route, string endpoint = "",
 			if (res.statusCode >= 300 && res.statusCode < 400)
 			{
 				string loc = res.headers.get("Location", "");
+				(() @trusted => logDebugV("Getting redirected to %s", loc))();
 				if (!loc.length)
 					throw new Exception("Expected 'Location' header for redirect status code");
 				if (loc.startsWith("http:", "https:"))
@@ -150,11 +154,12 @@ Json requestDiscordEndpoint(string route, string endpoint = "",
 				httpRateLimit.update(endpoint, res);
 				if (res.statusCode == HTTPStatus.tooManyRequests)
 					return;
-				else if (res.statusCode != HTTPStatus.ok)
+				else if (!(res.statusCode >= 200 && res.statusCode < 300))
 					throw new Exception(
 						"Got invalid HTTP status code " ~ res.statusCode.to!string
 						~ " with data " ~ res.bodyReader.readAllUTF8);
-				ret = res.bodyReader.readAllUTF8.parseJsonString;
+				if (res.statusCode != 204)
+					ret = res.bodyReader.readAllUTF8.parseJsonString;
 				haveRet = true;
 			}
 		});
@@ -203,6 +208,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
 		}).deserializeJson!Channel;
 	}
 
@@ -224,6 +230,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
 		});
 	}
 
@@ -244,6 +251,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
 		}).deserializeJson!(Message[]);
 	}
 
@@ -255,6 +263,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
 		}).deserializeJson!Message;
 	}
 
@@ -308,6 +317,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
 		});
 	}
 
@@ -331,12 +341,13 @@ struct ChannelAPI
 	void react(Snowflake message, Emoji emoji) const @trusted
 	{
 		auto route = endpoint ~ "/messages";
-		string path = route ~ "/" ~ message.toString ~ "/" ~ serializeToJsonString(emoji)
-			.encodeComponent ~ "/" ~ "@me".encodeComponent;
+		string path = route ~ "/" ~ message.toString ~ "/reactions/"
+			~ emoji.toAPIString ~ "/" ~ "@me".encodeComponent;
 		requestDiscordEndpoint(path, route, (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.PUT;
+			req.writeBody(null, null);
 		});
 	}
 
@@ -344,12 +355,13 @@ struct ChannelAPI
 	void unreact(Snowflake message, Emoji emoji) const @trusted
 	{
 		auto route = endpoint ~ "/messages";
-		string path = route ~ "/" ~ message.toString ~ "/" ~ serializeToJsonString(emoji)
-			.encodeComponent ~ "/" ~ "@me".encodeComponent;
+		string path = route ~ "/" ~ message.toString ~ "/reactions/"
+			~ emoji.toAPIString ~ "/" ~ "@me".encodeComponent;
 		requestDiscordEndpoint(path, route, (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
 		});
 	}
 
@@ -357,12 +369,13 @@ struct ChannelAPI
 	void deleteReaction(Snowflake message, Emoji emoji, Snowflake author) const @trusted
 	{
 		auto route = endpoint ~ "/messages";
-		string path = route ~ "/" ~ message.toString ~ "/" ~ serializeToJsonString(emoji)
-			.encodeComponent ~ "/" ~ author.toString;
+		string path = route ~ "/" ~ message.toString ~ "/reactions/"
+			~ emoji.toAPIString ~ "/" ~ author.toString;
 		requestDiscordEndpoint(path, route, (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
 		});
 	}
 
@@ -376,12 +389,12 @@ struct ChannelAPI
 			query ~= "&before=" ~ before.get.toString;
 		if (!after.isNull)
 			query ~= "&after=" ~ after.get.toString;
-		string path = route ~ "/" ~ message.toString ~ "/reactions/" ~ serializeToJsonString(emoji)
-			.encodeComponent ~ query;
+		string path = route ~ "/" ~ message.toString ~ "/reactions/" ~ emoji.toAPIString ~ query;
 		return requestDiscordEndpoint(path, route, (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
 		}).deserializeJson!(User[]);
 	}
 
@@ -394,6 +407,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
 		});
 	}
 
@@ -423,6 +437,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
 		});
 	}
 
@@ -434,6 +449,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
 		}).deserializeJson!(Invite[]);
 	}
 
@@ -466,6 +482,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.POST;
+			req.writeBody(null, null);
 		});
 	}
 
@@ -476,6 +493,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
 		}).deserializeJson!(Message[]);
 	}
 
@@ -487,6 +505,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.PUT;
+			req.writeBody(null, null);
 		});
 	}
 
@@ -498,6 +517,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
 		});
 	}
 
@@ -508,6 +528,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.PUT;
+			req.writeBody(null, null);
 		});
 	}
 
@@ -518,6 +539,7 @@ struct ChannelAPI
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
 		});
 	}
 }

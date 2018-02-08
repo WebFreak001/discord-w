@@ -22,6 +22,11 @@ struct Snowflake
 {
 	private ulong id;
 
+	this(ulong id) @safe
+	{
+		this.id = id;
+	}
+
 	void erlpack(ref ETFBuffer buffer)
 	{
 		buffer.putULong(id);
@@ -228,6 +233,35 @@ struct Role
 struct Emoji
 {
 	mixin OptionalSerializer!(typeof(this));
+
+	static Emoji builtin(string emoji) @safe
+	{
+		Emoji ret;
+		ret.name = emoji;
+		return ret;
+	}
+
+	static Emoji named(Snowflake id, string name, bool animated = false) @safe
+	{
+		Emoji ret;
+		ret.id = id;
+		ret.name = name;
+		ret.animated = animated;
+		return ret;
+	}
+
+	string toAPIString() @safe
+	{
+		import std.uri : encodeComponent;
+
+		if (id.isNull)
+			return (() @trusted => encodeComponent(name))();
+		else
+		{
+			auto s = name ~ ":" ~ id.get.toString;
+			return (() @trusted => encodeComponent(s))();
+		}
+	}
 
 	Nullable!Snowflake id;
 	string name;
