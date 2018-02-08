@@ -1,7 +1,8 @@
 {
 	"dependencies": {
-		"vibe-d:http": "*",
-		"sizes": "~>1.0.0"
+		"vibe-d:http": "*"
 	},
-	"name": "discord-w"
+	"name": "discord-w",
+	"description": "up-to-date vibe.d based discord client library",
+	"license": "MIT"
 }
