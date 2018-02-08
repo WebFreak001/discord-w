@@ -33,7 +33,7 @@ struct HTTPRateLimit
 	bool globalRatelimit;
 	SysTime globalReset;
 
-	void call(string endpoint) @safe
+	void call(string bucket) @safe
 	{
 		if (globalRatelimit)
 		{
@@ -42,7 +42,7 @@ struct HTTPRateLimit
 		}
 		while (true)
 		{
-			auto info = endpoint in infos;
+			auto info = bucket in infos;
 			if (!info)
 				return;
 			auto now = Clock.currTime;
@@ -61,7 +61,7 @@ struct HTTPRateLimit
 		}
 	}
 
-	bool update(string endpoint, scope HTTPClientResponse res) @safe
+	bool update(string bucket, scope HTTPClientResponse res) @safe
 	{
 		const limit = res.headers.get("X-RateLimit-Limit", "");
 		const remaining = res.headers.get("X-RateLimit-Remaining", "");
@@ -89,7 +89,7 @@ struct HTTPRateLimit
 		info.limit = limit.to!long;
 		info.remaining = remaining.to!long;
 		info.reset = SysTime.fromUnixTime(reset.to!long);
-		infos[endpoint] = info;
+		infos[bucket] = info;
 		bool ret = res.statusCode != HTTPStatus.tooManyRequests;
 		if (!ret)
 		{
@@ -103,19 +103,19 @@ struct HTTPRateLimit
 
 HTTPRateLimit httpRateLimit;
 
-Json requestDiscordEndpoint(string route, string endpoint = "",
+Json requestDiscordEndpoint(string route, string bucket = "",
 		void delegate(scope HTTPClientRequest req) @safe requester = null) @safe
 {
-	(() @trusted => logDebug("Requesting Discord API Route %s (with rate limit endpoint %s)",
-			route, endpoint))();
-	if (!endpoint.length)
-		endpoint = route;
+	(() @trusted => logDebug("Requesting Discord API Route %s (with rate limit bucket %s)",
+			route, bucket))();
+	if (!bucket.length)
+		bucket = route;
 	assert(route.length && route[0] == '/');
-	assert(endpoint.length && endpoint[0] == '/');
+	assert(bucket.length && bucket[0] == '/');
 	URL url = URL(discordEndpointBase ~ route);
 	Json ret;
 	bool haveRet;
-	httpRateLimit.call(endpoint);
+	httpRateLimit.call(bucket);
 	while (!haveRet)
 	{
 		requestHTTP(url, (scope req) {
@@ -151,7 +151,7 @@ Json requestDiscordEndpoint(string route, string endpoint = "",
 			}
 			else
 			{
-				httpRateLimit.update(endpoint, res);
+				httpRateLimit.update(bucket, res);
 				if (res.statusCode == HTTPStatus.tooManyRequests)
 					return;
 				else if (!(res.statusCode >= 200 && res.statusCode < 300))
@@ -343,7 +343,7 @@ struct ChannelAPI
 		auto route = endpoint ~ "/messages";
 		string path = route ~ "/" ~ message.toString ~ "/reactions/"
 			~ emoji.toAPIString ~ "/" ~ "@me".encodeComponent;
-		requestDiscordEndpoint(path, route, (scope req) {
+		requestDiscordEndpoint(path, route ~ "/reactions", (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.PUT;
@@ -357,7 +357,7 @@ struct ChannelAPI
 		auto route = endpoint ~ "/messages";
 		string path = route ~ "/" ~ message.toString ~ "/reactions/"
 			~ emoji.toAPIString ~ "/" ~ "@me".encodeComponent;
-		requestDiscordEndpoint(path, route, (scope req) {
+		requestDiscordEndpoint(path, route ~ "/reactions", (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.DELETE;
@@ -371,7 +371,7 @@ struct ChannelAPI
 		auto route = endpoint ~ "/messages";
 		string path = route ~ "/" ~ message.toString ~ "/reactions/"
 			~ emoji.toAPIString ~ "/" ~ author.toString;
-		requestDiscordEndpoint(path, route, (scope req) {
+		requestDiscordEndpoint(path, route ~ "/reactions", (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.DELETE;
@@ -390,7 +390,7 @@ struct ChannelAPI
 		if (!after.isNull)
 			query ~= "&after=" ~ after.get.toString;
 		string path = route ~ "/" ~ message.toString ~ "/reactions/" ~ emoji.toAPIString ~ query;
-		return requestDiscordEndpoint(path, route, (scope req) {
+		return requestDiscordEndpoint(path, route ~ "/reactions", (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.GET;
@@ -403,7 +403,7 @@ struct ChannelAPI
 	{
 		auto route = endpoint ~ "/messages";
 		string path = route ~ "/" ~ message.toString ~ "/reactions";
-		requestDiscordEndpoint(path, route, (scope req) {
+		requestDiscordEndpoint(path, route ~ "/reactions", (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.DELETE;
