@@ -1,0 +1,7 @@
+{
+	"dependencies": {
+		"vibe-d:http": "*",
+		"sizes": "~>1.0.0"
+	},
+	"name": "discord-w"
+}
