@@ -83,6 +83,7 @@ class MyGateway : DiscordGateway
 			}
 			else if (m.content.startsWith(":deletthis:")) // or just the text if they don't have the emote
 			{
+				match = true;
 				args = m.content[":deletthis:".length .. $].strip;
 			}
 			if (match)
