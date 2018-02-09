@@ -62,6 +62,10 @@ class MyGateway : DiscordGateway
 	{
 		// the super call updates caches and should always be done
 		super.onMessageCreate(m);
+		// as this is a bot we don't want to process our own information
+		// we get our own information from this.info which is sent by the Gateway
+		if (m.author.id == this.info.user.id)
+			return;
 
 		// fetches from global cache which is updated by every gateway
 		auto guild = getGuildByChannel(m.channel_id);
@@ -119,11 +123,6 @@ class MyGateway : DiscordGateway
 				return;
 			}
 		}
-
-		// as this is a bot we don't want to process our own information
-		// we get our own information from this.info which is sent by the Gateway
-		if (m.author.id == this.info.user.id)
-			return;
 
 		if (m.content.startsWith("!status "))
 		{
