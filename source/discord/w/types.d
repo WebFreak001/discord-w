@@ -612,7 +612,7 @@ struct Message
 	bool tts;
 	bool mention_everyone;
 	User[] mentions;
-	Role[] mention_roles;
+	Snowflake[] mention_roles;
 	Attachment[] attachments;
 	Embed[] embeds;
 	@optional Reaction[] reactions;

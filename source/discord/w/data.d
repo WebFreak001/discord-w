@@ -3,6 +3,8 @@ module discord.w.data;
 import discord.w.types;
 import discord.w.cache;
 
+import std.array;
+import std.algorithm;
 import std.typecons;
 
 struct GuildUserCache
@@ -14,6 +16,11 @@ struct GuildUserCache
 	PresenceUpdate.Status status;
 	bool deaf, mute;
 	string nick;
+
+	Role[] resolveRoles() @safe
+	{
+		return gGuildCache.get(guildUserID[0]).roles.filter!(a => roles.canFind(a.id)).array;
+	}
 }
 
 struct ChannelUserCache
@@ -72,4 +79,29 @@ auto gGuildCache() @trusted
 auto gMessageCache() @trusted
 {
 	return _gMessageCache;
+}
+
+Snowflake getGuildByChannel(Snowflake channel) @safe
+{
+	return gChannelCache.get(channel).guild_id;
+}
+
+Permissions getUserPermissions(Snowflake guild, Snowflake channel, Snowflake user) @safe
+{
+	// TODO: implement channel overwrites
+
+	auto guildMember = gGuildUserCache.get([guild, user]);
+	auto roles = guildMember.resolveRoles;
+
+	Permissions ret;
+	foreach (role; roles)
+		ret |= cast(Permissions) role.permissions;
+	return ret;
+}
+
+bool hasPermission(Permissions src, Permissions check) @safe
+{
+	if (src & Permissions.ADMINISTRATOR)
+		return true;
+	return (src & check) != 0;
 }

@@ -89,6 +89,8 @@ class SimpleCache(T, string idMember = "id", size_t limit = size_t.max)
 		}
 	}
 
+	alias get = update;
+
 	T update(IDType id, scope void delegate(scope ref T) @safe updater = null, bool put = false)
 	{
 		if (locked)

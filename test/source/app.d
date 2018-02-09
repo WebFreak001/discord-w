@@ -1,12 +1,17 @@
 module app;
 
 import std.algorithm;
+import std.array;
 import std.conv;
 import std.stdio;
 import std.string;
 import std.typecons;
 
 import discord.w;
+
+enum ConfirmEmoji = Emoji.builtin("✅");
+enum CancelEmoji = Emoji.builtin("❌");
+enum ErrorEmoji = Emoji.builtin("❌");
 
 // inheriting from DiscordGateway to override gateway events
 class MyGateway : DiscordGateway
@@ -16,10 +21,103 @@ class MyGateway : DiscordGateway
 		super(token);
 	}
 
+	struct ConfirmCallback
+	{
+		void delegate() @safe fn;
+		Snowflake admin;
+	}
+
+	ConfirmCallback[Snowflake] confirmCallbacks;
+
+	void confirm(Snowflake channel, Snowflake admin, string text, void delegate() @safe callback) @safe
+	{
+		auto msg = bot.channel(channel).sendMessage(text);
+		runTask({
+			bot.channel(channel).react(msg.id, ConfirmEmoji);
+			bot.channel(channel).react(msg.id, CancelEmoji);
+		});
+		confirmCallbacks[msg.id] = ConfirmCallback(callback, admin);
+	}
+
+	void sendTemporary(Snowflake channel, string text) @safe
+	{
+		auto m = bot.channel(channel).sendMessage(text);
+		runTask({ sleep(10.seconds); bot.channel(channel).deleteMessage(m.id); });
+	}
+
+	override void onMessageReactionAdd(MessageReactionAddPacket p)
+	{
+		super.onMessageReactionAdd(p);
+
+		auto cb = p.message_id in confirmCallbacks;
+		if (cb && cb.admin == p.user_id)
+		{
+			bot.channel(p.channel_id).deleteMessage(p.message_id);
+			if (p.emoji.name == ConfirmEmoji.name)
+				cb.fn();
+		}
+	}
+
 	override void onMessageCreate(Message m) @safe
 	{
 		// the super call updates caches and should always be done
 		super.onMessageCreate(m);
+
+		// fetches from global cache which is updated by every gateway
+		auto guild = getGuildByChannel(m.channel_id);
+		// fetches from global cache which is updated by every gateway
+		auto perms = getUserPermissions(guild, m.channel_id, m.author.id);
+
+		// binary and the Permissions enum + check for administrator
+		if (perms.hasPermission(Permissions.MANAGE_MESSAGES))
+		{
+			bool match = false;
+			string args;
+			// any emote called :deletthis:
+			if (m.content.startsWith("<:deletthis:"))
+			{
+				auto end = m.content.indexOf('>');
+				if (end != -1)
+					match = true;
+				args = m.content[end + 1 .. $].strip;
+			}
+			else if (m.content.startsWith(":deletthis:")) // or just the text if they don't have the emote
+			{
+				args = m.content[":deletthis:".length .. $].strip;
+			}
+			if (match)
+			{
+				int num = 0;
+				if (args.length)
+					num = args.to!int;
+				if (num > 100)
+				{
+					bot.channel(m.channel_id).react(m.id, ErrorEmoji);
+					sendTemporary(m.channel_id, "that's too much! <:ResidentSleeper:356899140896030721>");
+					return;
+				}
+				if (num < 0)
+				{
+					bot.channel(m.channel_id).react(m.id, ErrorEmoji);
+					sendTemporary(m.channel_id, "that's not enough! <:tangery:403173063429980161>");
+					return;
+				}
+				Nullable!Snowflake before = m.id;
+				bot.channel(m.channel_id).deleteMessage(m.id);
+				if (num > 0)
+				{
+					auto messages = bot.channel(m.channel_id).getMessages(num,
+							Nullable!Snowflake.init, before);
+					auto messageIDs = messages.map!(a => a.id).array;
+					confirm(m.channel_id, m.author.id,
+							"Should I really delete " ~ num.to!string ~ " message" ~ (num == 1
+								? "" : "s") ~ "? 🤔", () @safe{
+								bot.channel(m.channel_id).deleteMessages(messageIDs);
+							});
+				}
+				return;
+			}
+		}
 
 		// as this is a bot we don't want to process our own information
 		// we get our own information from this.info which is sent by the Gateway
@@ -59,7 +157,7 @@ class MyGateway : DiscordGateway
 			{
 				bot.channel(m.channel_id).react(m.id, Emoji.builtin("❌"));
 				bot.channel(m.channel_id).react(m.id,
-					Emoji.named(Snowflake(346759581546053648UL), "PagChomp"));
+						Emoji.named(Snowflake(346759581546053648UL), "PagChomp"));
 			}
 		}
 	}

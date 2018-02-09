@@ -419,6 +419,22 @@ class DiscordGateway
 	void onGuildCreate(Guild g)
 	{
 		gGuildCache.put(g);
+		foreach (channel; g.channels)
+		{
+			channel.guild_id = g.id;
+			gChannelCache.put(channel);
+		}
+		foreach (member; g.members)
+		{
+			GuildUserCache entry;
+			entry.guildUserID = [g.id, member.user.id];
+			entry.roles = member.roles;
+			entry.joinDate = member.joined_at;
+			entry.deaf = member.deaf;
+			entry.mute = member.mute;
+			entry.nick = member.nick;
+			gGuildUserCache.put(entry);
+		}
 	}
 
 	void onGuildUpdate(Guild g)

@@ -38,6 +38,7 @@ struct HTTPRateLimit
 		if (globalRatelimit)
 		{
 			auto left = globalReset - Clock.currTime;
+			(() @trusted => logDebug("Global rate limit waiting %s", left))();
 			sleep(left);
 		}
 		while (true)
@@ -47,17 +48,16 @@ struct HTTPRateLimit
 				return;
 			auto now = Clock.currTime;
 			if (info.reset == SysTime.init || info.reset <= now)
-			{
-				info.remaining = info.limit;
-				info.reset = now + 10.minutes;
-			}
+				return;
 			if (info.remaining == 0)
 			{
+				(() @trusted => logDebug("Waiting for %s due to heuristic rate limit", info.reset - now))();
 				sleep(info.reset - now);
 				continue;
 			}
 			info.remaining--;
-			break;
+			(() @trusted => logDebugV("Got %s left in bucket %s", *info, bucket))();
+			return;
 		}
 	}
 
@@ -68,9 +68,10 @@ struct HTTPRateLimit
 		const reset = res.headers.get("X-RateLimit-Reset", "");
 		const global = res.headers.get("X-RateLimit-Global", "");
 		const retryAfter = res.headers.get("Retry-After", "");
-		if (global.length)
+		if (global == "true")
 		{
 			auto dur = retryAfter.length ? retryAfter.to!int.msecs : 5.seconds;
+			(() @trusted => logDiagnostic("Got globally rate limited, retrying in %s", dur))();
 			globalReset = Clock.currTime + dur;
 			globalRatelimit = true;
 			sleep(dur);
@@ -80,6 +81,7 @@ struct HTTPRateLimit
 		{
 			if (res.statusCode == HTTPStatus.tooManyRequests)
 			{
+				(() @trusted => logDiagnostic("TOO MANY REQUESTS, but no RateLimit headers sent?"))();
 				sleep(1.seconds);
 				return false;
 			}
@@ -89,13 +91,20 @@ struct HTTPRateLimit
 		info.limit = limit.to!long;
 		info.remaining = remaining.to!long;
 		info.reset = SysTime.fromUnixTime(reset.to!long);
+		(() @trusted => logDebugV("Updating ratelimit bucket %s to %s", bucket, info))();
 		infos[bucket] = info;
 		bool ret = res.statusCode != HTTPStatus.tooManyRequests;
 		if (!ret)
 		{
 			auto now = Clock.currTime;
 			if (info.reset > now)
+			{
+				(() @trusted => logDebug("Retrying in %s because of %s rate limit", info.reset - now,
+						bucket))();
 				sleep(info.reset - now);
+			}
+			else
+				(() @trusted => logDebug("Retrying immediately because of %s rate limit", bucket))();
 		}
 		return ret;
 	}
@@ -268,7 +277,7 @@ struct ChannelAPI
 	}
 
 	@(Permissions.SEND_MESSAGES)
-	void sendMessage(string content, Nullable!Snowflake nonce = Nullable!Snowflake.init,
+	Message sendMessage(string content, Nullable!Snowflake nonce = Nullable!Snowflake.init,
 			bool tts = false, Nullable!Embed embed = Nullable!Embed.init) const @safe
 	{
 		auto route = endpoint ~ "/messages";
@@ -280,7 +289,7 @@ struct ChannelAPI
 			json["tts"] = Json(true);
 		if (!embed.isNull)
 			json["embed"] = serializeToJson(embed.get);
-		requestDiscordEndpoint(route, route, (scope req) {
+		return requestDiscordEndpoint(route, route, (scope req) {
 			// waiting for https://github.com/vibe-d/vibe.d/pull/1876
 			// or https://github.com/vibe-d/vibe.d/pull/1178
 			// to get merged to support file/image upload
@@ -288,11 +297,11 @@ struct ChannelAPI
 				requester(req);
 			req.method = HTTPMethod.POST;
 			req.writeJsonBody(json);
-		});
+		}).deserializeJson!Message;
 	}
 
 	@(Permissions.SEND_MESSAGES)
-	void updateOwnMessage(Snowflake message, string content = null,
+	Message updateOwnMessage(Snowflake message, string content = null,
 			Nullable!Embed embed = Nullable!Embed.init) const @safe
 	{
 		auto route = endpoint ~ "/messages";
@@ -301,12 +310,12 @@ struct ChannelAPI
 			json["content"] = Json(content);
 		if (!embed.isNull)
 			json["embed"] = serializeToJson(embed.get);
-		requestDiscordEndpoint(route ~ "/" ~ message.toString, route, (scope req) {
+		return requestDiscordEndpoint(route ~ "/" ~ message.toString, route, (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.PATCH;
 			req.writeJsonBody(json);
-		});
+		}).deserializeJson!Message;
 	}
 
 	@(Permissions.MANAGE_MESSAGES)
@@ -322,18 +331,18 @@ struct ChannelAPI
 	}
 
 	@(Permissions.MANAGE_MESSAGES)
-	void deleteMessages(Snowflake[] message) const @safe
+	void deleteMessages(Snowflake[] messages) const @safe
 	{
-		if (message.length < 2)
+		if (messages.length < 2)
 			throw new Exception("Need to delete at least 2 messages");
-		if (message.length > 100)
+		if (messages.length > 100)
 			throw new Exception("Can delete at most 100 messages");
 		auto route = endpoint ~ "/messages";
 		requestDiscordEndpoint(route ~ "/bulk-delete", route, (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.POST;
-			req.writeJsonBody(message);
+			req.writeJsonBody(Json(["messages" : serializeToJson(messages)]));
 		});
 	}
 
