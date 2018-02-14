@@ -248,6 +248,8 @@ struct ChannelAPI
 			Nullable!Snowflake before = Nullable!Snowflake.init,
 			Nullable!Snowflake after = Nullable!Snowflake.init) const @safe
 	{
+		if (limit > 100)
+			throw new Exception("Can only get at most 100 messages");
 		auto route = endpoint ~ "/messages";
 		string query = "?limit=" ~ limit.to!string;
 		if (!around.isNull)
@@ -333,8 +335,10 @@ struct ChannelAPI
 	@(Permissions.MANAGE_MESSAGES)
 	void deleteMessages(Snowflake[] messages) const @safe
 	{
-		if (messages.length < 2)
-			throw new Exception("Need to delete at least 2 messages");
+		if (messages.length < 1)
+			throw new Exception("Need to delete at least 1 message");
+		if (messages.length == 0)
+			return deleteMessage(messages[0]);
 		if (messages.length > 100)
 			throw new Exception("Can delete at most 100 messages");
 		auto route = endpoint ~ "/messages";
