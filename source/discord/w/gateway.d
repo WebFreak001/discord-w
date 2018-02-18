@@ -244,6 +244,7 @@ class DiscordGateway
 		shouldDisconnect = true;
 		if (socket && socket.connected)
 			socket.close(code);
+		socket = null;
 	}
 
 	void reconnect(bool resume = false)
