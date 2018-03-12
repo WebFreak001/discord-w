@@ -145,7 +145,7 @@ struct Channel
 	@optional string name;
 	@optional string topic;
 	@optional bool nsfw;
-	@optional Nullable!Snowflake last_message_id;
+	@optional Nullable!string last_message_id;
 	@optional int bitrate;
 	@optional int user_limit;
 	@optional User[] recipients;
@@ -573,6 +573,15 @@ struct Embed
 	Field[] fields;
 }
 
+/// https://discordapp.com/developers/docs/resources/guild#guild-embed-object
+struct GuildEmbed
+{
+	mixin OptionalSerializer!(typeof(this));
+
+	bool enabled;
+	Nullable!Snowflake channel_id;
+}
+
 /// https://discordapp.com/developers/docs/resources/channel#reaction-object
 struct Reaction
 {
@@ -645,6 +654,7 @@ struct ApplicationInformation
 	}
 }
 
+/// https://discordapp.com/developers/docs/resources/invite#invite-object
 struct Invite
 {
 	mixin OptionalSerializer!(typeof(this));
@@ -668,7 +678,70 @@ struct Invite
 		@optional string name;
 	}
 
+	struct InviteMetadata
+	{
+		mixin OptionalSerializer!(typeof(this));
+
+		User inviter;
+		int uses;
+		int max_uses;
+		int max_age;
+		bool temporary;
+		SafeTime created_at;
+		bool revoked;
+	}
+
 	string code;
 	Guild guild;
 	Channel channel;
+	@optional InviteMetadata metadata;
+}
+
+/// https://discordapp.com/developers/docs/resources/guild#ban-object
+struct Ban
+{
+	mixin OptionalSerializer!(typeof(this));
+
+	Nullable!string reason;
+	User user;
+}
+
+/// https://discordapp.com/developers/docs/resources/guild#integration-object
+struct Integration
+{
+	/// https://discordapp.com/developers/docs/resources/guild#integration-account-object
+	struct Account
+	{
+		mixin OptionalSerializer!(typeof(this));
+
+		string id;
+		string name;
+	}
+
+	mixin OptionalSerializer!(typeof(this));
+
+	Snowflake id;
+	string name;
+	string type;
+	bool enabled;
+	bool syncing;
+	Snowflake role_id;
+	int expire_behavior;
+	int expire_grace_period;
+	User user;
+	Account account;
+	SafeTime synced_at;
+}
+
+// https://discordapp.com/developers/docs/resources/voice#voice-region-object
+struct VoiceRegion
+{
+	mixin OptionalSerializer!(typeof(this));
+
+	string id;
+	string name;
+	bool vip;
+	bool optimal;
+	bool deprecated_;
+	bool custom;
 }

@@ -17,6 +17,8 @@ import vibe.stream.operations;
 import discord.w.types;
 import discord.w.json;
 
+alias TTS = Flag!"tts";
+
 enum discordwVersion = "1";
 
 enum discordEndpointBase = "https://discordapp.com/api/v6";
@@ -155,7 +157,7 @@ Json requestDiscordEndpoint(string route, string bucket = "",
 				}
 				else
 				{
-					url = url.parentURL ~ Path(loc);
+					url = url.parentURL ~ InetPath(loc);
 				}
 			}
 			else
@@ -280,7 +282,7 @@ struct ChannelAPI
 
 	@(Permissions.SEND_MESSAGES)
 	Message sendMessage(string content, Nullable!Snowflake nonce = Nullable!Snowflake.init,
-			bool tts = false, Nullable!Embed embed = Nullable!Embed.init) const @safe
+			TTS tts = No.tts, Nullable!Embed embed = Nullable!Embed.init) const @safe
 	{
 		auto route = endpoint ~ "/messages";
 		Json json = Json.emptyObject;
@@ -554,5 +556,452 @@ struct ChannelAPI
 			req.method = HTTPMethod.DELETE;
 			req.writeBody(null, null);
 		});
+	}
+}
+
+struct GuildAPI
+{
+	string endpoint;
+	void delegate(scope HTTPClientRequest req) @safe requester;
+
+	this(Snowflake id, void delegate(scope HTTPClientRequest req) @safe requester = null) @safe
+	{
+		endpoint = "/guilds/" ~ id.toString;
+		this.requester = requester;
+	}
+
+	Guild get() const @safe
+	{
+		return requestDiscordEndpoint(endpoint, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
+		}).deserializeJson!Guild;
+	}
+
+	struct Update
+	{
+		mixin OptionalSerializer!(typeof(this));
+
+		@optional string name;
+		@optional string region;
+		@optional int verification_level = -1;
+		@optional int default_message_notifications = -1;
+		@optional int explicit_content_filter = -1;
+		@optional Nullable!Snowflake afk_channel_id;
+		@optional int afk_timeout = -1;
+		@optional string icon;
+		@optional Nullable!Snowflake owner_id;
+		@optional string splash;
+		@optional Nullable!Snowflake system_channel_id;
+	}
+
+	@(Permissions.MANAGE_GUILD)
+	Guild updateGuild(Update update) const @safe
+	{
+		return requestDiscordEndpoint(endpoint, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.PATCH;
+			req.writeJsonBody(serializeToJson(update));
+		}).deserializeJson!Guild;
+	}
+
+	@(Permissions.MANAGE_GUILD)
+	void deleteGuild() const @safe
+	{
+		requestDiscordEndpoint(endpoint, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
+		});
+	}
+
+	Channel[] channels() const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/channels", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
+		}).deserializeJson!(Channel[]);
+	}
+
+	struct ChannelArgs
+	{
+		mixin OptionalSerializer!(typeof(this));
+
+		@optional string name;
+		@optional int type = -1;
+		@optional int bitrate = -1;
+		@optional int user_limit = -1;
+		@optional Overwrite[] permission_overwrites;
+		@optional Nullable!Snowflake parent_id;
+		@optional Nullable!bool nsfw;
+	}
+
+	@(Permissions.MANAGE_CHANNELS)
+	Channel createChannel(ChannelArgs args) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/channels", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.POST;
+			req.writeJsonBody(serializeToJson(args));
+		}).deserializeJson!Channel;
+	}
+
+	@(Permissions.MANAGE_CHANNELS)
+	void moveChannel(Snowflake channel, int position) const @safe
+	{
+		requestDiscordEndpoint(endpoint ~ "/channels", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.PATCH;
+			req.writeJsonBody(Json(["id" : channel.toJson, "position" : Json(position)]));
+		});
+	}
+
+	GuildMember guildMember(Snowflake userID) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/members/" ~ userID.toString, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
+		}).deserializeJson!GuildMember;
+	}
+
+	GuildMember[] members() const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/members", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
+		}).deserializeJson!(GuildMember[]);
+	}
+
+	struct AddGuildMemberArgs
+	{
+		mixin OptionalSerializer!(typeof(this));
+
+		@optional string access_token;
+		@optional string nick;
+		@optional Snowflake[] roles;
+		@optional Nullable!bool mute;
+		@optional Nullable!bool deaf;
+	}
+
+	GuildMember addMember(Snowflake userID, AddGuildMemberArgs args) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/members/" ~ userID.toString, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.PUT;
+			req.writeJsonBody(args);
+		}).deserializeJson!GuildMember;
+	}
+
+	struct ChangeGuildMemberArgs
+	{
+		mixin OptionalSerializer!(typeof(this));
+
+		@optional string nick;
+		@optional Snowflake[] roles;
+		@optional Nullable!bool mute;
+		@optional Nullable!bool deaf;
+		@optional Nullable!Snowflake channel_id;
+	}
+
+	GuildMember modifyMember(Snowflake userID, ChangeGuildMemberArgs args) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/members/" ~ userID.toString, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.PUT;
+			req.writeJsonBody(args);
+		}).deserializeJson!GuildMember;
+	}
+
+	@(Permissions.CHANGE_NICKNAME)
+	string changeNickname(string nickname) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/members/@me/nick", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.PATCH;
+			req.writeJsonBody(["nick" : nickname]);
+		}).deserializeJson!string;
+	}
+
+	@(Permissions.MANAGE_ROLES)
+	void addMemberRole(Snowflake user, Snowflake role) const @safe
+	{
+		requestDiscordEndpoint(endpoint ~ "/members/" ~ user.toString ~ "/roles/" ~ role.toString,
+				endpoint, (scope req) {
+					if (requester)
+						requester(req);
+					req.method = HTTPMethod.PUT;
+					req.writeBody(null, null);
+				});
+	}
+
+	@(Permissions.MANAGE_ROLES)
+	void removeMemberRole(Snowflake user, Snowflake role) const @safe
+	{
+		requestDiscordEndpoint(endpoint ~ "/members/" ~ user.toString ~ "/roles/" ~ role.toString,
+				endpoint, (scope req) {
+					if (requester)
+						requester(req);
+					req.method = HTTPMethod.DELETE;
+					req.writeBody(null, null);
+				});
+	}
+
+	@(Permissions.KICK_MEMBERS)
+	void kickUser(Snowflake user) const @safe
+	{
+		requestDiscordEndpoint(endpoint ~ "/members/" ~ user.toString, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
+		});
+	}
+
+	@(Permissions.BAN_MEMBERS)
+	Ban[] bans() const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/bans", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
+		}).deserializeJson!(Ban[]);
+	}
+
+	@(Permissions.BAN_MEMBERS)
+	void banUser(Snowflake user, string reason = "", int deleteMessageDays = 0) const @safe
+	{
+		requestDiscordEndpoint(endpoint ~ "/bans/" ~ user.toString, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.PUT;
+			req.writeJsonBody(["delete-message-days" : Json(deleteMessageDays), "reason" : Json(reason)]);
+		});
+	}
+
+	@(Permissions.BAN_MEMBERS)
+	void unbanUser(Snowflake user) const @safe
+	{
+		requestDiscordEndpoint(endpoint ~ "/bans/" ~ user.toString, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
+		});
+	}
+
+	@(Permissions.MANAGE_ROLES)
+	Role[] unbanUser(Snowflake user) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/roles", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
+		}).deserializeJson!(Role[]);
+	}
+
+	struct RoleCreateArgs
+	{
+		mixin OptionalSerializer!(typeof(this));
+
+		string name;
+		int color;
+		bool hoist;
+		uint permissions;
+		bool mentionable;
+	}
+
+	@(Permissions.MANAGE_ROLES)
+	Role createRole(RoleCreateArgs role) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/roles", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.POST;
+			req.writeJsonBody(role);
+		}).deserializeJson!Role;
+	}
+
+	@(Permissions.MANAGE_ROLES)
+	Role[] moveRole(Snowflake role, int position) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/roles", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.PATCH;
+			req.writeJsonBody(["id" : role.toJson, "position" : Json(position)]);
+		}).deserializeJson!(Role[]);
+	}
+
+	@(Permissions.MANAGE_ROLES)
+	Role updateRole(Snowflake id, RoleCreateArgs role) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/roles/" ~ id.toString, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.PATCH;
+			req.writeJsonBody(role);
+		}).deserializeJson!Role;
+	}
+
+	@(Permissions.MANAGE_ROLES)
+	void removeRole(Snowflake id) const @safe
+	{
+		requestDiscordEndpoint(endpoint ~ "/roles/" ~ id.toString, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
+		});
+	}
+
+	@(Permissions.KICK_MEMBERS)
+	int checkPrune(int days) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/prune", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeJsonBody(["days" : days]);
+		})["pruned"].deserializeJson!int;
+	}
+
+	@(Permissions.KICK_MEMBERS)
+	int pruneMembers(int days) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/prune", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.POST;
+			req.writeJsonBody(["days" : days]);
+		})["pruned"].deserializeJson!int;
+	}
+
+	VoiceRegion[] voiceRegions() const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/regions", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
+		}).deserializeJson!(VoiceRegion[]);
+	}
+
+	@(Permissions.MANAGE_GUILD)
+	Invite[] invites() const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/invites", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
+		}).deserializeJson!(Invite[]);
+	}
+
+	@(Permissions.MANAGE_GUILD)
+	Integration[] integration() const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/integrations", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
+		}).deserializeJson!(Integration[]);
+	}
+
+	@(Permissions.MANAGE_GUILD)
+	void createIntegration(string type, Snowflake id) const @safe
+	{
+		requestDiscordEndpoint(endpoint ~ "/integrations", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.POST;
+			req.writeJsonBody(["type" : Json(type), "id" : id.toJson]);
+		});
+	}
+
+	@(Permissions.MANAGE_GUILD)
+	void updateGuildIntegration(Snowflake id, int expireBehavior,
+			int expireGracePeriod, bool enableEmoticons) const @safe
+	{
+		requestDiscordEndpoint(endpoint ~ "/integrations/" ~ id.toString, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.PATCH;
+			req.writeJsonBody(["expire_behavior" : Json(expireBehavior), "expire_grace_period"
+				: Json(expireGracePeriod), "enable_emoticons" : Json(enableEmoticons)]);
+		});
+	}
+
+	@(Permissions.MANAGE_GUILD)
+	void deleteIntegration(Snowflake id) const @safe
+	{
+		requestDiscordEndpoint(endpoint ~ "/integrations/" ~ id.toString, endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.DELETE;
+			req.writeBody(null, null);
+		});
+	}
+
+	@(Permissions.MANAGE_GUILD)
+	void syncIntegration(Snowflake id) const @safe
+	{
+		requestDiscordEndpoint(endpoint ~ "/integrations/" ~ id.toString ~ "/sync",
+				endpoint, (scope req) {
+					if (requester)
+						requester(req);
+					req.method = HTTPMethod.POST;
+					req.writeBody(null, null);
+				});
+	}
+
+	@(Permissions.MANAGE_GUILD)
+	GuildEmbed embed(Snowflake id) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/embed", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
+		}).deserializeJson!GuildEmbed;
+	}
+
+	@(Permissions.MANAGE_GUILD)
+	GuildEmbed updateEmbed(GuildEmbed embed) const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/embed", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.PATCH;
+			req.writeJsonBody(embed);
+		}).deserializeJson!GuildEmbed;
+	}
+
+	@(Permissions.MANAGE_GUILD)
+	string vanityUrl() const @safe
+	{
+		return requestDiscordEndpoint(endpoint ~ "/vanity-url", endpoint, (scope req) {
+			if (requester)
+				requester(req);
+			req.method = HTTPMethod.GET;
+			req.writeBody(null, null);
+		})["code"].opt!string(null);
 	}
 }

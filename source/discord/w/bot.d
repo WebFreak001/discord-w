@@ -18,6 +18,16 @@ struct DiscordBot
 			return *api;
 		return channelAPIs[id] = ChannelAPI(id, authBot(token));
 	}
+
+	GuildAPI[Snowflake] guildAPIs;
+
+	GuildAPI guild(Snowflake id) @safe
+	{
+		auto api = id in guildAPIs;
+		if (api)
+			return *api;
+		return guildAPIs[id] = GuildAPI(id, authBot(token));
+}
 }
 
 DiscordBot makeBot(string token, DiscordGateway gateway)
