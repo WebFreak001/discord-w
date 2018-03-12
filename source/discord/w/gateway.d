@@ -435,6 +435,7 @@ class DiscordGateway
 			entry.mute = member.mute;
 			entry.nick = member.nick;
 			gGuildUserCache.put(entry);
+			gUserCache.patch(member.user, true);
 		}
 	}
 
@@ -475,6 +476,7 @@ class DiscordGateway
 		entry.mute = member.mute;
 		entry.nick = member.nick;
 		gGuildUserCache.put(entry);
+		gUserCache.patch(member.user, true);
 	}
 
 	void onGuildMemberRemove(GuildMemberRemovePacket p)
@@ -598,7 +600,7 @@ class DiscordGateway
 
 	void onUserUpdate(User u)
 	{
-		gUserCache.patch(u);
+		gUserCache.patch(u, true);
 	}
 
 	void onVoiceStateUpdate(VoiceState s)
