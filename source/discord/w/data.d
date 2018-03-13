@@ -19,7 +19,22 @@ struct GuildUserCache
 
 	Role[] resolveRoles() @safe
 	{
-		return gGuildCache.get(guildUserID[0]).roles.filter!(a => roles.canFind(a.id)).array;
+		return guild.roles.filter!(a => roles.canFind(a.id)).array;
+	}
+
+	Guild guild() @safe @property
+	{
+		return gGuildCache.get(guildUserID[0]);
+	}
+
+	User user() @safe @property
+	{
+		return gUserCache.get(guildUserID[1]);
+	}
+
+	string effectiveNick() @safe @property
+	{
+		return nick.length ? nick : user.username;
 	}
 }
 
@@ -31,10 +46,15 @@ struct ChannelUserCache
 
 struct VoiceStateCache
 {
-	union
+	VoiceState state;
+
+	ref Snowflake[3] id() @property @trusted
 	{
-		VoiceState state;
-		Snowflake[3] id;
+		static assert(is(typeof(VoiceState.tupleof[0]) == Snowflake));
+		static assert(is(typeof(VoiceState.tupleof[1]) == Snowflake));
+		static assert(is(typeof(VoiceState.tupleof[2]) == Snowflake));
+
+		return (cast(Snowflake*)&state)[0 .. 3];
 	}
 }
 

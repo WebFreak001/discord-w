@@ -109,7 +109,26 @@ class SimpleCache(T, string idMember = "id", size_t limit = size_t.max)
 					return data;
 				}
 				else
+				{
+					debug (DumpCache)
+					{
+						import vibe.core.path : NativePath;
+						import vibe.core.file : writeFileUTF8;
+						import vibe.data.json : serializeToJsonString;
+						import vibe.core.log : logDebugV;
+
+						writeFileUTF8(NativePath("debug-" ~ T.stringof ~ "-cache.json"),
+								serializeToJsonString(entries));
+						logDebugV("Dumped cache to debug-" ~ T.stringof ~ "-cache.json");
+					}
+				else
+					{
+						import vibe.core.log : logDebugV;
+
+						logDebugV("Cache entries: %(%s, %)", entries.map!("a." ~ idMember));
+					}
 					throw new Exception("Tried to update non existant cache entry");
+				}
 			}
 			if (updater)
 			{
