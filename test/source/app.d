@@ -171,14 +171,17 @@ class MyGateway : DiscordGateway
 			int success;
 			int fails;
 
-			try
+			if (newNick.canFind('%'))
 			{
-				format(newNick, 1);
-			}
-			catch (Exception)
-			{
-				bot.channel(m.channel_id).sendMessage("❌ invalid nickname");
-				return;
+				try
+				{
+					format(newNick, 1);
+				}
+				catch (Exception)
+				{
+					bot.channel(m.channel_id).sendMessage("❌ invalid nickname");
+					return;
+				}
 			}
 
 			if (existsFile("old_" ~ guild.toString ~ ".txt"))
@@ -212,7 +215,10 @@ class MyGateway : DiscordGateway
 						old.n = entry.nick;
 
 						GuildAPI.ChangeGuildMemberArgs args;
-						args.nick = format(newNick, success + 1);
+						if (newNick.canFind('%'))
+							args.nick = format(newNick, success + 1);
+						else
+							args.nick = newNick;
 						gapi.modifyMember(entry.guildUserID[1], args);
 						success++;
 						if (!first)
