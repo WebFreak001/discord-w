@@ -190,18 +190,21 @@ class MyGateway : DiscordGateway
 				}
 			}
 
-			if (existsFile("old_" ~ guild.toString ~ ".txt"))
-			{
-				bot.channel(m.channel_id).sendMessage("❌ channel already bobbified.");
-				return;
-			}
+			bool alreadyBobbified = existsFile("old_" ~ guild.toString ~ ".txt");
 
-			auto file = openFile("old_" ~ guild.toString ~ ".txt", FileMode.createTrunc);
-			file.write("[");
+			FileStream file;
+			if (!alreadyBobbified)
+			{
+				file = openFile("old_" ~ guild.toString ~ ".txt", FileMode.createTrunc);
+				file.write("[");
+			}
 			scope (exit)
 			{
-				file.write("]");
-				file.close();
+				if (!alreadyBobbified)
+				{
+					file.write("]");
+					file.close();
+				}
 			}
 
 			bool first = true;
@@ -227,11 +230,14 @@ class MyGateway : DiscordGateway
 							args.nick = newNick;
 						gapi.modifyMember(entry.guildUserID[1], args);
 						success++;
-						if (!first)
-							file.write(",\n");
-						file.write(serializeToJsonString(old));
-						file.flush();
-						oldNicks ~= old;
+						if (!alreadyBobbified)
+						{
+							if (!first)
+								file.write(",\n");
+							file.write(serializeToJsonString(old));
+							file.flush();
+							oldNicks ~= old;
+						}
 						first = false;
 					}
 					catch (Exception)
