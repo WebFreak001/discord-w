@@ -105,7 +105,7 @@ struct User
 	@optional bool bot;
 	@optional bool mfa_enabled;
 	@optional bool verified;
-	@optional string email;
+	@optional Nullable!string email;
 
 	URL avatarURL(string format = "png") const @safe
 	{
@@ -142,8 +142,8 @@ struct Channel
 	@optional Snowflake guild_id;
 	@optional int position;
 	@optional Overwrite[] permission_overwrites;
-	@optional string name;
-	@optional string topic;
+	@optional Nullable!string name;
+	@optional Nullable!string topic;
 	@optional bool nsfw;
 	@optional Nullable!string last_message_id;
 	@optional int bitrate;
@@ -315,7 +315,7 @@ struct GuildMember
 	mixin OptionalSerializer!(typeof(this));
 
 	User user;
-	@optional string nick;
+	@optional Nullable!string nick;
 	Snowflake[] roles;
 	SafeTime joined_at;
 	bool deaf;
@@ -638,9 +638,9 @@ struct ApplicationInformation
 
 	Snowflake id;
 	string name;
-	@optional string icon;
-	@optional string description;
-	@optional string[] rpc_origins;
+	@optional Nullable!string icon;
+	@optional Nullable!string description;
+	@optional Nullable!string[] rpc_origins;
 	bool bot_public;
 	bool bot_require_code_grant;
 	User owner;
@@ -675,7 +675,7 @@ struct Invite
 
 		Snowflake id;
 		.Channel.Type type;
-		@optional string name;
+		@optional Nullable!string name;
 	}
 
 	struct InviteMetadata

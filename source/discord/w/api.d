@@ -203,9 +203,9 @@ struct ChannelAPI
 	{
 		mixin OptionalSerializer!(typeof(this));
 
-		@optional string name;
+		@optional Nullable!string name;
 		@optional int position = -1;
-		@optional string topic;
+		@optional Nullable!string topic;
 		@optional Nullable!bool nsfw;
 		@optional int bitrate;
 		@optional int user_limit = -1;
@@ -584,16 +584,16 @@ struct GuildAPI
 	{
 		mixin OptionalSerializer!(typeof(this));
 
-		@optional string name;
-		@optional string region;
+		@optional Nullable!string name;
+		@optional Nullable!string region;
 		@optional int verification_level = -1;
 		@optional int default_message_notifications = -1;
 		@optional int explicit_content_filter = -1;
 		@optional Nullable!Snowflake afk_channel_id;
 		@optional int afk_timeout = -1;
-		@optional string icon;
+		@optional Nullable!string icon;
 		@optional Nullable!Snowflake owner_id;
-		@optional string splash;
+		@optional Nullable!string splash;
 		@optional Nullable!Snowflake system_channel_id;
 	}
 
@@ -633,7 +633,7 @@ struct GuildAPI
 	{
 		mixin OptionalSerializer!(typeof(this));
 
-		@optional string name;
+		@optional Nullable!string name;
 		@optional int type = -1;
 		@optional int bitrate = -1;
 		@optional int user_limit = -1;
@@ -688,8 +688,8 @@ struct GuildAPI
 	{
 		mixin OptionalSerializer!(typeof(this));
 
-		@optional string access_token;
-		@optional string nick;
+		@optional Nullable!string access_token;
+		@optional Nullable!string nick;
 		@optional Snowflake[] roles;
 		@optional Nullable!bool mute;
 		@optional Nullable!bool deaf;
@@ -709,21 +709,21 @@ struct GuildAPI
 	{
 		mixin OptionalSerializer!(typeof(this));
 
-		@optional string nick;
+		@optional Nullable!string nick;
 		@optional Snowflake[] roles;
 		@optional Nullable!bool mute;
 		@optional Nullable!bool deaf;
 		@optional Nullable!Snowflake channel_id;
 	}
 
-	GuildMember modifyMember(Snowflake userID, ChangeGuildMemberArgs args) const @safe
+	void modifyMember(Snowflake userID, ChangeGuildMemberArgs args) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/members/" ~ userID.toString, endpoint, (scope req) {
+		requestDiscordEndpoint(endpoint ~ "/members/" ~ userID.toString, endpoint, (scope req) {
 			if (requester)
 				requester(req);
-			req.method = HTTPMethod.PUT;
+			req.method = HTTPMethod.PATCH;
 			req.writeJsonBody(args);
-		}).deserializeJson!GuildMember;
+		});
 	}
 
 	@(Permissions.CHANGE_NICKNAME)
