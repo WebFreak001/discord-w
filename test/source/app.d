@@ -69,6 +69,7 @@ class MyGateway : DiscordGateway
 	}
 
 	Snowflake[] runningBobbifies;
+	Snowflake[] runningUnbobbifies;
 
 	override void onMessageCreate(Message m) @safe
 	{
@@ -152,6 +153,16 @@ class MyGateway : DiscordGateway
 		}
 		else if (m.content.startsWith("!bobbify") && perms.hasPermission(Permissions.MANAGE_NICKNAMES))
 		{
+			if (runningBobbifies.canFind(guild))
+			{
+				bot.channel(m.channel_id).sendMessage("❌ currently bobbifying already.");
+				return;
+			}
+
+			runningBobbifies ~= guild;
+			scope (exit)
+				runningBobbifies = runningBobbifies.remove!(a => a == guild);
+
 			string newNick = m.content["!bobbify".length .. $].strip;
 			if (!newNick.length)
 				newNick = "Bob";
@@ -167,10 +178,15 @@ class MyGateway : DiscordGateway
 				return;
 			}
 
-			runningBobbifies ~= guild;
+			auto file = openFile("old_" ~ guild.toString ~ ".txt", FileMode.createTrunc);
+			file.write("[");
 			scope (exit)
-				runningBobbifies = runningBobbifies.remove!(a => a == guild);
+			{
+				file.write("]");
+				file.close();
+			}
 
+			bool first = true;
 			OldNick[] oldNicks;
 			foreach (ref entry; gGuildUserCache.entries)
 			{
@@ -187,7 +203,12 @@ class MyGateway : DiscordGateway
 						old.n = entry.nick;
 						gapi.modifyMember(entry.guildUserID[1], args);
 						success++;
+						if (!first)
+							file.write(",\n");
+						file.write(serializeToJsonString(old));
+						file.flush();
 						oldNicks ~= old;
+						first = false;
 					}
 					catch (Exception)
 					{
@@ -197,28 +218,45 @@ class MyGateway : DiscordGateway
 			}
 			bot.channel(m.channel_id).sendMessage("✅ " ~ success.to!string ~ "  ❌ " ~ fails
 					.to!string);
-			writeFileUTF8(NativePath("old_" ~ guild.toString ~ ".txt"), serializeToJsonString(oldNicks));
 		}
 		else if (m.content.startsWith("!unbobbify") && perms.hasPermission(
 				Permissions.MANAGE_NICKNAMES))
 		{
+			if (runningUnbobbifies.canFind(guild))
+			{
+				bot.channel(m.channel_id).sendMessage("❌ currently unbobbifying already.");
+				return;
+			}
+
 			GuildAPI gapi = bot.guild(guild);
 			int success;
 			int fails;
 
+			if (runningBobbifies.canFind(guild))
+			{
+				runningBobbifies = runningBobbifies.remove!(a => a == guild);
+				bot.channel(m.channel_id)
+					.sendMessage("✅ aborted bobbify early, use !unbobbify again to undo changes.");
+				return;
+			}
+
 			if (!existsFile("old_" ~ guild.toString ~ ".txt"))
 			{
-				if (runningBobbifies.canFind(guild))
-				{
-					runningBobbifies = runningBobbifies.remove!(a => a == guild);
-					bot.channel(m.channel_id).sendMessage("✅ aborted bobbify early, use !unbobbify again to undo changes.");
-					return;
-				}
 				bot.channel(m.channel_id).sendMessage("❌ channel not bobbified.");
 				return;
 			}
 
-			foreach (old; readFileUTF8("old_" ~ guild.toString ~ ".txt").deserializeJson!(OldNick[]))
+			runningUnbobbifies ~= guild;
+			scope (exit)
+				runningUnbobbifies = runningUnbobbifies.remove!(a => a == guild);
+
+			string f = readFileUTF8("old_" ~ guild.toString ~ ".txt");
+			if (!f.endsWith("]"))
+			{
+				bot.channel(m.channel_id).sendMessage("⚠️ restoring partially broken file!");
+				f ~= "]";
+			}
+			foreach (old; f.deserializeJson!(OldNick[]))
 			{
 				try
 				{
