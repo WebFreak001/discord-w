@@ -188,7 +188,7 @@ class MyGateway : DiscordGateway
 			bot.channel(m.channel_id).sendMessage("✅ " ~ success.to!string ~ "❌ " ~ fails.to!string);
 			writeFileUTF8(NativePath("old_" ~ guild.toString ~ ".txt"), serializeToJsonString(oldNicks));
 		}
-		else if (m.content.startsWith("!unbobbify"))
+		else if (m.content.startsWith("!unbobbify") && perms.hasPermission(Permissions.MANAGE_NICKNAMES))
 		{
 			GuildAPI gapi = bot.guild(guild);
 			int success;
