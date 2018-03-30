@@ -7,11 +7,21 @@ import std.stdio;
 import std.string;
 import std.typecons;
 
+import vibe.core.file;
+import vibe.core.path;
+import vibe.data.json;
+
 import discord.w;
 
 enum ConfirmEmoji = Emoji.builtin("✅");
 enum CancelEmoji = Emoji.builtin("❌");
 enum ErrorEmoji = Emoji.builtin("❌");
+
+struct OldNick
+{
+	Snowflake u;
+	string n;
+}
 
 // inheriting from DiscordGateway to override gateway events
 class MyGateway : DiscordGateway
@@ -137,6 +147,75 @@ class MyGateway : DiscordGateway
 		{
 			// bot.channel binds the HTTP channel API to this channel with the bot token and caches it
 			bot.channel(m.channel_id).sendMessage("pong!");
+		}
+		else if (m.content.startsWith("!bobbify") && perms.hasPermission(Permissions.MANAGE_NICKNAMES))
+		{
+			string newNick = m.content["!bobbify".length .. $].strip;
+			if (!newNick.length)
+				newNick = "Bob";
+			GuildAPI gapi = bot.guild(guild);
+			int success;
+			int fails;
+			GuildAPI.ChangeGuildMemberArgs args;
+			args.nick = newNick;
+
+			if (existsFile("old_" ~ guild.toString ~ ".txt"))
+			{
+				bot.channel(m.channel_id).sendMessage("❌ channel already bobbified.");
+				return;
+			}
+
+			OldNick[] oldNicks;
+			foreach (ref entry; gGuildUserCache.entries)
+			{
+				if (entry.guildUserID[0] == guild)
+				{
+					try
+					{
+						OldNick old;
+						old.u = entry.guildUserID[1];
+						old.n = entry.nick;
+						gapi.modifyMember(entry.guildUserID[1], args);
+						success++;
+						oldNicks ~= old;
+					}
+					catch (Exception)
+					{
+						fails++;
+					}
+				}
+			}
+			bot.channel(m.channel_id).sendMessage("✅ " ~ success.to!string ~ "❌ " ~ fails.to!string);
+			writeFileUTF8(NativePath("old_" ~ guild.toString ~ ".txt"), serializeToJsonString(oldNicks));
+		}
+		else if (m.content.startsWith("!unbobbify"))
+		{
+			GuildAPI gapi = bot.guild(guild);
+			int success;
+			int fails;
+
+			if (!existsFile("old_" ~ guild.toString ~ ".txt"))
+			{
+				bot.channel(m.channel_id).sendMessage("❌ channel not bobbified.");
+				return;
+			}
+
+			foreach (old; readFileUTF8("old_" ~ guild.toString ~ ".txt").deserializeJson!(OldNick[]))
+			{
+				try
+				{
+					GuildAPI.ChangeGuildMemberArgs args;
+					args.nick = old.n;
+					gapi.modifyMember(old.u, args);
+					success++;
+				}
+				catch (Exception)
+				{
+					fails++;
+				}
+			}
+			bot.channel(m.channel_id).sendMessage("✅ " ~ success.to!string ~ "❌ " ~ fails.to!string);
+			removeFile("old_" ~ guild.toString ~ ".txt");
 		}
 		else if (m.mentions.canFind!(user => user.id == this.info.user.id))
 		{
