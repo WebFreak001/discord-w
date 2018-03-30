@@ -160,6 +160,12 @@ class MyGateway : DiscordGateway
 				return;
 			}
 
+			if (runningUnbobbifies.canFind(guild))
+			{
+				bot.channel(m.channel_id).sendMessage("❌ currently unbobbifying");
+				return;
+			}
+
 			runningBobbifies ~= guild;
 			scope (exit)
 				runningBobbifies = runningBobbifies.remove!(a => a == guild);
