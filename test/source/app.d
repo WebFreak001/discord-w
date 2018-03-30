@@ -258,6 +258,8 @@ class MyGateway : DiscordGateway
 				return;
 			}
 
+			bool writeFailure = !m.content.endsWith("-f");
+
 			GuildAPI gapi = bot.guild(guild);
 			int success;
 			int fails;
@@ -280,6 +282,8 @@ class MyGateway : DiscordGateway
 			scope (exit)
 				runningUnbobbifies = runningUnbobbifies.remove!(a => a == guild);
 
+			OldNick[] broken;
+
 			string f = readFileUTF8("old_" ~ guild.toString ~ ".txt");
 			if (!f.endsWith("]"))
 			{
@@ -297,11 +301,18 @@ class MyGateway : DiscordGateway
 				}
 				catch (Exception)
 				{
+					broken ~= old;
 					fails++;
 				}
 			}
 			bot.channel(m.channel_id).sendMessage("✅ " ~ success.to!string ~ "❌ " ~ fails.to!string);
 			removeFile("old_" ~ guild.toString ~ ".txt");
+			if (broken.length && writeFailure)
+			{
+				writeFileUTF8("old_" ~ guild.toString ~ ".txt", serializeToJsonString(broken));
+				bot.channel(m.channel_id)
+					.sendMessage("wrote failed attempts back to disk, use !unbobbify -f to prevent this.");
+			}
 		}
 		else if (m.mentions.canFind!(user => user.id == this.info.user.id))
 		{
