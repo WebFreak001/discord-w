@@ -3,6 +3,7 @@ module app;
 import std.algorithm;
 import std.array;
 import std.conv;
+import std.format;
 import std.stdio;
 import std.string;
 import std.typecons;
@@ -169,8 +170,16 @@ class MyGateway : DiscordGateway
 			GuildAPI gapi = bot.guild(guild);
 			int success;
 			int fails;
-			GuildAPI.ChangeGuildMemberArgs args;
-			args.nick = newNick;
+
+			try
+			{
+				format(newNick, 1);
+			}
+			catch (Exception)
+			{
+				bot.channel(m.channel_id).sendMessage("❌ invalid nickname");
+				return;
+			}
 
 			if (existsFile("old_" ~ guild.toString ~ ".txt"))
 			{
@@ -201,6 +210,9 @@ class MyGateway : DiscordGateway
 						OldNick old;
 						old.u = entry.guildUserID[1];
 						old.n = entry.nick;
+
+						GuildAPI.ChangeGuildMemberArgs args;
+						args.nick = format(newNick, success + 1);
 						gapi.modifyMember(entry.guildUserID[1], args);
 						success++;
 						if (!first)
