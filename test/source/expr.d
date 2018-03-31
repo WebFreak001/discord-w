@@ -130,6 +130,10 @@ string processExpr(string expr, int i) nothrow @safe
 			ret = expr;
 		}
 	}
+	else if (expr == "i" || expr == "I")
+	{
+		ret = i.to!string;
+	}
 	else
 	{
 		try

@@ -176,6 +176,7 @@ class MyGateway : DiscordGateway
 			if (!newNick.length)
 				newNick = "Bob";
 			GuildAPI gapi = bot.guild(guild);
+			bool modified;
 			int success;
 			int fails;
 
@@ -237,7 +238,10 @@ class MyGateway : DiscordGateway
 							oldNicks ~= old;
 						}
 						else if (!oldNicks.canFind!(a => a.u == old.u))
+						{
+							modified = true;
 							oldNicks ~= old;
+						}
 						first = false;
 					}
 					catch (Exception)
@@ -248,6 +252,8 @@ class MyGateway : DiscordGateway
 			}
 			bot.channel(m.channel_id).sendMessage("✅ " ~ success.to!string ~ "  ❌ " ~ fails
 					.to!string);
+			if (alreadyBobbified && modified)
+				writeFileUTF8(NativePath("old_" ~ guild.toString ~ ".txt"), serializeToJsonString(oldNicks));
 		}
 		else if (m.content.startsWith("!unbobbify") && perms.hasPermission(
 				Permissions.MANAGE_NICKNAMES))
