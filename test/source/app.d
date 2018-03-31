@@ -12,6 +12,8 @@ import vibe.core.file;
 import vibe.core.path;
 import vibe.data.json;
 
+import expr;
+
 import discord.w;
 
 enum ConfirmEmoji = Emoji.builtin("✅");
@@ -177,20 +179,19 @@ class MyGateway : DiscordGateway
 			int success;
 			int fails;
 
-			if (newNick.canFind('%'))
+			bool alreadyBobbified = existsFile("old_" ~ guild.toString ~ ".txt");
+			OldNick[] oldNicks;
+
+			if (alreadyBobbified)
 			{
-				try
+				string s = readFileUTF8("old_" ~ guild.toString ~ ".txt");
+				if (!s.endsWith("]"))
 				{
-					format(newNick, 1);
-				}
-				catch (Exception)
-				{
-					bot.channel(m.channel_id).sendMessage("❌ invalid nickname");
+					bot.channel(m.channel_id).sendMessage("❌ last bobbify broke");
 					return;
 				}
+				oldNicks = deserializeJson!(OldNick[])(s);
 			}
-
-			bool alreadyBobbified = existsFile("old_" ~ guild.toString ~ ".txt");
 
 			FileStream file;
 			if (!alreadyBobbified)
@@ -208,14 +209,14 @@ class MyGateway : DiscordGateway
 			}
 
 			bool first = true;
-			OldNick[] oldNicks;
 			foreach (ref entry; gGuildUserCache.entries)
 			{
 				if (!runningBobbifies.canFind(guild))
 					break;
 				if (entry.guildUserID[0] == guild)
 				{
-					if (entry.nick == newNick)
+					string setNick = stringFormatter(newNick, success);
+					if (entry.nick == setNick)
 						continue;
 					try
 					{
@@ -224,10 +225,7 @@ class MyGateway : DiscordGateway
 						old.n = entry.nick;
 
 						GuildAPI.ChangeGuildMemberArgs args;
-						if (newNick.canFind('%'))
-							args.nick = format(newNick, success + 1);
-						else
-							args.nick = newNick;
+						args.nick = setNick;
 						gapi.modifyMember(entry.guildUserID[1], args);
 						success++;
 						if (!alreadyBobbified)
@@ -238,6 +236,8 @@ class MyGateway : DiscordGateway
 							file.flush();
 							oldNicks ~= old;
 						}
+						else if (!oldNicks.canFind!(a => a.u == old.u))
+							oldNicks ~= old;
 						first = false;
 					}
 					catch (Exception)
@@ -309,7 +309,7 @@ class MyGateway : DiscordGateway
 			removeFile("old_" ~ guild.toString ~ ".txt");
 			if (broken.length && writeFailure)
 			{
-				writeFileUTF8("old_" ~ guild.toString ~ ".txt", serializeToJsonString(broken));
+				writeFileUTF8(NativePath("old_" ~ guild.toString ~ ".txt"), serializeToJsonString(broken));
 				bot.channel(m.channel_id)
 					.sendMessage("wrote failed attempts back to disk, use !unbobbify -f to prevent this.");
 			}
@@ -341,8 +341,11 @@ class MyGateway : DiscordGateway
 
 DiscordBot bot;
 
-// call with ./test [token]
-void main(string[] args)
+version (unittest)
+{
+}
+else // call with ./test [token]
+	void main(string[] args)
 {
 	if (args.length <= 1)
 	{
