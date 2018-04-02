@@ -474,7 +474,7 @@ class DiscordGateway
 		entry.joinDate = member.joined_at;
 		entry.deaf = member.deaf;
 		entry.mute = member.mute;
-		entry.nick = member.nick;
+		entry.nick = member.nick.isNull ? null : member.nick.get;
 		gGuildUserCache.put(entry);
 		gUserCache.patch(member.user, true);
 	}
