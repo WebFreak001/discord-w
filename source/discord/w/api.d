@@ -95,8 +95,8 @@ struct HTTPRateLimit
 		info.reset = SysTime.fromUnixTime(reset.to!long);
 		(() @trusted => logDebugV("Updating ratelimit bucket %s to %s", bucket, info))();
 		infos[bucket] = info;
-		bool ret = res.statusCode != HTTPStatus.tooManyRequests;
-		if (!ret)
+		bool gotResponse = res.statusCode != HTTPStatus.tooManyRequests;
+		if (!gotResponse)
 		{
 			auto now = Clock.currTime;
 			if (info.reset > now)
@@ -108,7 +108,7 @@ struct HTTPRateLimit
 			else
 				(() @trusted => logDebug("Retrying immediately because of %s rate limit", bucket))();
 		}
-		return ret;
+		return gotResponse;
 	}
 }
 
@@ -127,53 +127,75 @@ Json requestDiscordEndpoint(string route, string bucket = "",
 	Json ret;
 	bool haveRet;
 	httpRateLimit.call(bucket);
+	int try_ = 0;
 	while (!haveRet)
 	{
-		requestHTTP(url, (scope req) {
-			req.headers.addField("User-Agent",
-				"DiscordBot (https://github.com/WebFreak001/discord-w, " ~ discordwVersion ~ ")");
-			if (requester)
-				requester(req);
-		}, (scope res) {
-			if (res.statusCode >= 300 && res.statusCode < 400)
-			{
-				string loc = res.headers.get("Location", "");
-				(() @trusted => logDebugV("Getting redirected to %s", loc))();
-				if (!loc.length)
-					throw new Exception("Expected 'Location' header for redirect status code");
-				if (loc.startsWith("http:", "https:"))
+		if (try_ > 5)
+			throw new Exception("Failed to request endpoint after 5 retries.");
+		try_++;
+		(() @trusted => logDebugV("Request try %s for %s", try_, url))();
+		auto task = Task.getThis();
+		auto t = (() @trusted => setTimer(12.seconds, { task.interrupt(); }))();
+		scope (exit)
+			t.stop();
+		try
+		{
+			requestHTTP(url, (scope req) {
+				req.headers.addField("User-Agent",
+					"DiscordBot (https://github.com/WebFreak001/discord-w, " ~ discordwVersion ~ ")");
+				if (requester)
+					requester(req);
+			}, (scope res) {
+				t.stop();
+				if (res.statusCode >= 300 && res.statusCode < 400)
 				{
-					if (!loc.startsWith(discordEndpointBase))
-						throw new Exception(
-							"Global redirect not redirecting to discord endpoint base, aborting request");
-					url = URL(discordEndpointBase ~ loc[discordEndpointBase.length .. $]);
-				}
-				else if (loc[0] == '/')
-				{
-					auto apiBase = URL(discordEndpointBase).pathString;
-					if (!loc.startsWith(apiBase))
-						throw new Exception("Redirect escaping current API base path");
-					url = URL(discordEndpointBase ~ loc[apiBase.length .. $]);
+					string loc = res.headers.get("Location", "");
+					(() @trusted => logDebugV("Getting redirected to %s", loc))();
+					if (!loc.length)
+						throw new Exception("Expected 'Location' header for redirect status code");
+					if (loc.startsWith("http:", "https:"))
+					{
+						if (!loc.startsWith(discordEndpointBase))
+							throw new Exception(
+								"Global redirect not redirecting to discord endpoint base, aborting request");
+						url = URL(discordEndpointBase ~ loc[discordEndpointBase.length .. $]);
+					}
+					else if (loc[0] == '/')
+					{
+						auto apiBase = URL(discordEndpointBase).pathString;
+						if (!loc.startsWith(apiBase))
+							throw new Exception("Redirect escaping current API base path");
+						url = URL(discordEndpointBase ~ loc[apiBase.length .. $]);
+					}
+					else
+					{
+						url = url.parentURL ~ InetPath(loc);
+					}
 				}
 				else
 				{
-					url = url.parentURL ~ InetPath(loc);
+					(() @trusted => logTrace("updating bucket for %s", url))();
+					bool cont = httpRateLimit.update(bucket, res);
+					(() @trusted => logTrace("updated bucket for %s, result=%s", url, cont))();
+					if (res.statusCode == HTTPStatus.tooManyRequests)
+					{
+						(() @trusted => logDebugV("Got 429 TOO MANY REQUESTS for %s", url))();
+						return;
+					}
+					else if (!(res.statusCode >= 200 && res.statusCode < 300))
+						throw new Exception(
+							"Got invalid HTTP status code " ~ res.statusCode.to!string
+							~ " with data " ~ res.bodyReader.readAllUTF8);
+					if (res.statusCode != 204)
+						ret = res.bodyReader.readAllUTF8.parseJsonString;
+					haveRet = true;
 				}
-			}
-			else
-			{
-				httpRateLimit.update(bucket, res);
-				if (res.statusCode == HTTPStatus.tooManyRequests)
-					return;
-				else if (!(res.statusCode >= 200 && res.statusCode < 300))
-					throw new Exception(
-						"Got invalid HTTP status code " ~ res.statusCode.to!string
-						~ " with data " ~ res.bodyReader.readAllUTF8);
-				if (res.statusCode != 204)
-					ret = res.bodyReader.readAllUTF8.parseJsonString;
-				haveRet = true;
-			}
-		});
+			});
+		}
+		catch (InterruptException)
+		{
+			logWarn("Request for %s took too long and was interrupted", url);
+		}
 	}
 	return ret;
 }
@@ -674,9 +696,15 @@ struct GuildAPI
 		}).deserializeJson!GuildMember;
 	}
 
-	GuildMember[] members() const @safe
+	GuildMember[] members(int limit = 1, Snowflake after = Snowflake.init) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/members", endpoint, (scope req) {
+		string query = "?";
+		if (limit != 1)
+			query ~= "limit=" ~ limit.to!string ~ "&";
+		if (after != Snowflake.init)
+			query ~= "after=" ~ after.toString ~ "&";
+		query.length--;
+		return requestDiscordEndpoint(endpoint ~ "/members" ~ query, endpoint, (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.GET;
