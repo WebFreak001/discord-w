@@ -493,9 +493,13 @@ struct Embed
 {
 	mixin OptionalSerializer!(typeof(this));
 
+@optional: // not in the docs
+
 	struct Thumbnail
 	{
 		mixin OptionalSerializer!(typeof(this));
+
+	@optional: // not in the docs
 
 		string url;
 		string proxy_url;
@@ -507,6 +511,8 @@ struct Embed
 	{
 		mixin OptionalSerializer!(typeof(this));
 
+	@optional: // not in the docs
+
 		string url;
 		int height;
 		int width;
@@ -515,6 +521,8 @@ struct Embed
 	struct Image
 	{
 		mixin OptionalSerializer!(typeof(this));
+
+	@optional: // not in the docs
 
 		string url;
 		string proxy_url;
@@ -526,6 +534,8 @@ struct Embed
 	{
 		mixin OptionalSerializer!(typeof(this));
 
+	@optional: // not in the docs
+
 		string name;
 		string url;
 	}
@@ -533,6 +543,8 @@ struct Embed
 	struct Author
 	{
 		mixin OptionalSerializer!(typeof(this));
+
+	@optional: // not in the docs
 
 		string name;
 		string url;
@@ -544,6 +556,8 @@ struct Embed
 	{
 		mixin OptionalSerializer!(typeof(this));
 
+	@optional: // not in the docs
+
 		string text;
 		string icon_url;
 		string proxy_icon_url;
@@ -552,6 +566,8 @@ struct Embed
 	struct Field
 	{
 		mixin OptionalSerializer!(typeof(this));
+
+	@optional: // not in the docs
 
 		string name;
 		string value;
@@ -563,7 +579,7 @@ struct Embed
 	string description;
 	string url;
 	SafeTime timestamp;
-	int color;
+	Nullable!int color;
 	Footer footer;
 	Image image;
 	Thumbnail thumbnail;
