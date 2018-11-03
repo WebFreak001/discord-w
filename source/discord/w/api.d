@@ -812,13 +812,20 @@ struct GuildAPI
 	}
 
 	@(Permissions.BAN_MEMBERS)
-	void banUser(Snowflake user, string reason = "", int deleteMessageDays = 0) const @safe
+	void banUser(Snowflake user, string reason = "", int deleteMessageDays = 0) const @trusted
 	{
-		requestDiscordEndpoint(endpoint ~ "/bans/" ~ user.toString, endpoint, (scope req) {
+		string query = "";
+		if (deleteMessageDays != 0)
+			query ~= "&delete-message-days=" ~ deleteMessageDays.to!string;
+		if (reason.length)
+			query ~= "&reason=" ~ reason.encodeComponent;
+		if (query.length)
+			(cast(char[])query)[0] = '?';
+		requestDiscordEndpoint(endpoint ~ "/bans/" ~ user.toString ~ query, endpoint, (scope req) {
 			if (requester)
 				requester(req);
 			req.method = HTTPMethod.PUT;
-			req.writeJsonBody(["delete-message-days" : Json(deleteMessageDays), "reason" : Json(reason)]);
+			req.writeBody(null, null);
 		});
 	}
 
