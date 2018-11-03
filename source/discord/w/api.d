@@ -200,10 +200,65 @@ Json requestDiscordEndpoint(string route, string bucket = "",
 	return ret;
 }
 
+Json requestDiscordEndpointNull(HTTPMethod method, string route, string bucket,
+		scope void delegate(scope HTTPClientRequest req) @safe requester) @safe
+{
+	return requestDiscordEndpoint(route, bucket, (scope req) @safe {
+		if (requester)
+			requester(req);
+		req.method = method;
+		req.writeBody(null, null);
+	});
+}
+
+Json requestDiscordEndpointJson(T)(HTTPMethod method, T value, string route,
+		string bucket, scope void delegate(scope HTTPClientRequest req) @safe requester) @safe
+{
+	return requestDiscordEndpoint(route, bucket, (scope req) @safe {
+		if (requester)
+			requester(req);
+		req.method = method;
+		req.writeJsonBody(value);
+	});
+}
+
+enum simpleRequesters = q{
+	Json simpleNullRequest(HTTPMethod method, string route = "", string bucket = "") const @safe
+	{
+		prependEndpoint(endpoint, route);
+		if (bucket.length)
+			prependEndpoint(endpoint, bucket);
+		return requestDiscordEndpointNull(method, route, bucket, requester);
+	}
+
+	Json simpleJsonRequest(T)(HTTPMethod method, T value, string route = "", string bucket = "") const @safe
+	{
+		prependEndpoint(endpoint, route);
+		if (bucket.length)
+			prependEndpoint(endpoint, bucket);
+		return requestDiscordEndpointJson(method, value, route, bucket, requester);
+	}
+};
+
+void prependEndpoint(string endpoint, ref string value) @safe
+{
+	if (!value.length)
+	{
+		value = endpoint;
+		return;
+	}
+	else if (value.startsWith(endpoint))
+		return;
+	else if (value.startsWith("/"))
+		value = endpoint ~ value;
+	else
+		value = endpoint ~ "/" ~ value;
+}
+
 void delegate(scope HTTPClientRequest req) @safe authBot(string token,
 		scope void delegate(scope HTTPClientRequest req) @safe then = null) @safe
 {
-	return (scope req) @safe{
+	return (scope req) @safe {
 		req.headers.addField("Authorization", "Bot " ~ token);
 		if (then)
 			then(req);
@@ -235,36 +290,23 @@ struct ChannelAPI
 		@optional Nullable!Snowflake parent_id;
 	}
 
+	mixin(simpleRequesters);
+
 	Channel get() const @safe
 	{
-		return requestDiscordEndpoint(endpoint, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!Channel;
+		return simpleNullRequest(HTTPMethod.GET).deserializeJson!Channel;
 	}
 
 	@(Permissions.MANAGE_CHANNELS)
 	void updateChannel(Update update) const @safe
 	{
-		requestDiscordEndpoint(endpoint, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PATCH;
-			req.writeJsonBody(serializeToJson(update));
-		});
+		simpleJsonRequest(HTTPMethod.PATCH, update);
 	}
 
 	@(Permissions.MANAGE_CHANNELS)
 	void deleteChannel() const @safe
 	{
-		requestDiscordEndpoint(endpoint, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE);
 	}
 
 	@(Permissions.READ_MESSAGE_HISTORY)
@@ -274,7 +316,7 @@ struct ChannelAPI
 	{
 		if (limit > 100)
 			throw new Exception("Can only get at most 100 messages");
-		auto route = endpoint ~ "/messages";
+		auto route = "/messages";
 		string query = "?limit=" ~ limit.to!string;
 		if (!around.isNull)
 			query ~= "&around=" ~ around.get.toString;
@@ -282,24 +324,14 @@ struct ChannelAPI
 			query ~= "&before=" ~ before.get.toString;
 		if (!after.isNull)
 			query ~= "&after=" ~ after.get.toString;
-		return requestDiscordEndpoint(route ~ query, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!(Message[]);
+		return simpleNullRequest(HTTPMethod.GET, route ~ query, route).deserializeJson!(Message[]);
 	}
 
 	@(Permissions.READ_MESSAGE_HISTORY)
 	Message getMessage(Snowflake id) const @safe
 	{
-		auto route = endpoint ~ "/messages";
-		return requestDiscordEndpoint(route ~ "/" ~ id.toString, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!Message;
+		return simpleNullRequest(HTTPMethod.GET, "/messages/" ~ id.toString, "/messages")
+			.deserializeJson!Message;
 	}
 
 	@(Permissions.SEND_MESSAGES)
@@ -330,30 +362,19 @@ struct ChannelAPI
 	Message updateOwnMessage(Snowflake message, string content = null,
 			Nullable!Embed embed = Nullable!Embed.init) const @safe
 	{
-		auto route = endpoint ~ "/messages";
 		Json json = Json.emptyObject;
 		if (content.length)
 			json["content"] = Json(content);
 		if (!embed.isNull)
 			json["embed"] = serializeToJson(embed.get);
-		return requestDiscordEndpoint(route ~ "/" ~ message.toString, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PATCH;
-			req.writeJsonBody(json);
-		}).deserializeJson!Message;
+		return simpleJsonRequest(HTTPMethod.PATCH, json, "/messages/" ~ message.toString, "/messages")
+			.deserializeJson!Message;
 	}
 
 	@(Permissions.MANAGE_MESSAGES)
 	void deleteMessage(Snowflake message) const @safe
 	{
-		auto route = endpoint ~ "/messages";
-		requestDiscordEndpoint(route ~ "/" ~ message.toString, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE, "/messages/" ~ message.toString, "/messages");
 	}
 
 	@(Permissions.MANAGE_MESSAGES)
@@ -365,219 +386,121 @@ struct ChannelAPI
 			return deleteMessage(messages[0]);
 		if (messages.length > 100)
 			throw new Exception("Can delete at most 100 messages");
-		auto route = endpoint ~ "/messages";
-		requestDiscordEndpoint(route ~ "/bulk-delete", route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.POST;
-			req.writeJsonBody(Json(["messages" : serializeToJson(messages)]));
-		});
+		simpleJsonRequest(HTTPMethod.POST, ["messages" : messages], "/messages/bulk-delete");
 	}
 
 	@(Permissions.READ_MESSAGE_HISTORY | Permissions.ADD_REACTIONS)
 	void react(Snowflake message, Emoji emoji) const @trusted
 	{
-		auto route = endpoint ~ "/messages";
-		string path = route ~ "/" ~ message.toString ~ "/reactions/"
+		string path = "/messages/" ~ message.toString ~ "/reactions/"
 			~ emoji.toAPIString ~ "/" ~ "@me".encodeComponent;
-		requestDiscordEndpoint(path, route ~ "/reactions", (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PUT;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.PUT, path, "/messages/reactions");
 	}
 
 	@(Permissions.READ_MESSAGE_HISTORY | Permissions.ADD_REACTIONS)
 	void unreact(Snowflake message, Emoji emoji) const @trusted
 	{
-		auto route = endpoint ~ "/messages";
-		string path = route ~ "/" ~ message.toString ~ "/reactions/"
+		string path = "/messages/" ~ message.toString ~ "/reactions/"
 			~ emoji.toAPIString ~ "/" ~ "@me".encodeComponent;
-		requestDiscordEndpoint(path, route ~ "/reactions", (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE, path, "/messages/reactions");
 	}
 
 	@(Permissions.READ_MESSAGE_HISTORY | Permissions.MANAGE_MESSAGES)
 	void deleteReaction(Snowflake message, Emoji emoji, Snowflake author) const @trusted
 	{
-		auto route = endpoint ~ "/messages";
-		string path = route ~ "/" ~ message.toString ~ "/reactions/"
+		string path = "/messages/" ~ message.toString ~ "/reactions/"
 			~ emoji.toAPIString ~ "/" ~ author.toString;
-		requestDiscordEndpoint(path, route ~ "/reactions", (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE, path, "/messages/reactions");
 	}
 
 	@(Permissions.READ_MESSAGE_HISTORY)
 	User[] getReactionsByEmoji(Snowflake message, Emoji emoji, Nullable!Snowflake before = Nullable!Snowflake.init,
 			Nullable!Snowflake after = Nullable!Snowflake.init, int limit = 100) const @trusted
 	{
-		auto route = endpoint ~ "/messages";
 		string query = "?limit=" ~ limit.to!string;
 		if (!before.isNull)
 			query ~= "&before=" ~ before.get.toString;
 		if (!after.isNull)
 			query ~= "&after=" ~ after.get.toString;
-		string path = route ~ "/" ~ message.toString ~ "/reactions/" ~ emoji.toAPIString ~ query;
-		return requestDiscordEndpoint(path, route ~ "/reactions", (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!(User[]);
+		string path = "/messages/" ~ message.toString ~ "/reactions/" ~ emoji.toAPIString ~ query;
+		return simpleNullRequest(HTTPMethod.GET, path, "/messages/reactions").deserializeJson!(User[]);
 	}
 
 	@(Permissions.MANAGE_MESSAGES)
 	void clearReactions(Snowflake message) const @trusted
 	{
-		auto route = endpoint ~ "/messages";
-		string path = route ~ "/" ~ message.toString ~ "/reactions";
-		requestDiscordEndpoint(path, route ~ "/reactions", (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE,
+				"/messages/" ~ message.toString ~ "/reactions", "/messages/reactions");
 	}
 
 	@(Permissions.MANAGE_ROLES)
 	void editChannelPermissions(Snowflake overwrite, uint allow, uint deny, string type) const @trusted
 	{
-		auto route = endpoint ~ "/permissions";
-		string path = route ~ "/" ~ overwrite.toString;
-		requestDiscordEndpoint(path, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PUT;
-			Json json = Json.emptyObject;
-			json["allow"] = Json(allow);
-			json["deny"] = Json(deny);
-			json["type"] = Json(type);
-			req.writeJsonBody(json);
-		});
+		Json json = Json.emptyObject;
+		json["allow"] = Json(allow);
+		json["deny"] = Json(deny);
+		json["type"] = Json(type);
+		simpleJsonRequest(HTTPMethod.PUT, json, "/permissions/" ~ overwrite.toString);
 	}
 
 	@(Permissions.MANAGE_ROLES)
 	void deleteChannelPermissions(Snowflake overwrite) const @trusted
 	{
-		auto route = endpoint ~ "/permissions";
-		string path = route ~ "/" ~ overwrite.toString;
-		requestDiscordEndpoint(path, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE, "/permissions/" ~ overwrite.toString, "/permissions");
 	}
 
 	@(Permissions.MANAGE_CHANNELS)
 	Invite[] getInvites() const @trusted
 	{
-		auto route = endpoint ~ "/invites";
-		return requestDiscordEndpoint(route, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!(Invite[]);
+		return simpleNullRequest(HTTPMethod.GET, "/invites").deserializeJson!(Invite[]);
 	}
 
 	@(Permissions.CREATE_INSTANT_INVITE)
 	Invite createInvite(Duration maxAge = 24.hours, int maxUses = 0,
 			bool temporary = false, bool unique = false) const @trusted
 	{
-		auto route = endpoint ~ "/invites";
-		return requestDiscordEndpoint(route, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.POST;
-			Json json;
-			if (maxAge != 24.hours)
-				json["max_age"] = Json(maxAge.total!"seconds");
-			if (maxUses)
-				json["max_uses"] = Json(maxUses);
-			if (temporary)
-				json["temporary"] = Json(temporary);
-			if (unique)
-				json["unique"] = Json(unique);
-			req.writeJsonBody(json);
-		}).deserializeJson!Invite;
+		Json json;
+		if (maxAge != 24.hours)
+			json["max_age"] = Json(maxAge.total!"seconds");
+		if (maxUses)
+			json["max_uses"] = Json(maxUses);
+		if (temporary)
+			json["temporary"] = Json(temporary);
+		if (unique)
+			json["unique"] = Json(unique);
+		return simpleJsonRequest(HTTPMethod.POST, json, "/invites").deserializeJson!Invite;
 	}
 
 	void triggerTypingIndicator() const @trusted
 	{
-		auto route = endpoint ~ "/typing";
-		requestDiscordEndpoint(route, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.POST;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.POST, "/typing");
 	}
 
 	Message[] getPinnedMessages() const @trusted
 	{
-		auto route = endpoint ~ "/pins";
-		return requestDiscordEndpoint(route, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!(Message[]);
+		return simpleNullRequest(HTTPMethod.GET, "/pins").deserializeJson!(Message[]);
 	}
 
 	@(Permissions.MANAGE_MESSAGES)
 	void pinMessage(Snowflake id) const @trusted
 	{
-		auto route = endpoint ~ "/pins";
-		requestDiscordEndpoint(route ~ "/" ~ id.toString, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PUT;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.PUT, "/pins/" ~ id.toString, "/pins");
 	}
 
 	@(Permissions.MANAGE_MESSAGES)
 	void unpinMessage(Snowflake id) const @trusted
 	{
-		auto route = endpoint ~ "/pins";
-		requestDiscordEndpoint(route ~ "/" ~ id.toString, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE, "/pins/" ~ id.toString, "/pins");
 	}
 
 	void addToGroupDM(Snowflake user) const @trusted
 	{
-		auto route = endpoint ~ "/recipients";
-		requestDiscordEndpoint(route ~ "/" ~ user.toString, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PUT;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.PUT, "/recipients/" ~ user.toString, "/recipients");
 	}
 
 	void removeFromGroupDM(Snowflake user) const @trusted
 	{
-		auto route = endpoint ~ "/recipients";
-		requestDiscordEndpoint(route ~ "/" ~ user.toString, route, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE, "/recipients/" ~ user.toString, "/recipients");
 	}
 }
 
@@ -592,14 +515,11 @@ struct GuildAPI
 		this.requester = requester;
 	}
 
+	mixin(simpleRequesters);
+
 	Guild get() const @safe
 	{
-		return requestDiscordEndpoint(endpoint, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!Guild;
+		return simpleNullRequest(HTTPMethod.GET).deserializeJson!Guild;
 	}
 
 	struct Update
@@ -622,33 +542,18 @@ struct GuildAPI
 	@(Permissions.MANAGE_GUILD)
 	Guild updateGuild(Update update) const @safe
 	{
-		return requestDiscordEndpoint(endpoint, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PATCH;
-			req.writeJsonBody(serializeToJson(update));
-		}).deserializeJson!Guild;
+		return simpleJsonRequest(HTTPMethod.PATCH, update).deserializeJson!Guild;
 	}
 
 	@(Permissions.MANAGE_GUILD)
 	void deleteGuild() const @safe
 	{
-		requestDiscordEndpoint(endpoint, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE);
 	}
 
 	Channel[] channels() const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/channels", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!(Channel[]);
+		return simpleNullRequest(HTTPMethod.GET, "/channels").deserializeJson!(Channel[]);
 	}
 
 	struct ChannelArgs
@@ -667,33 +572,20 @@ struct GuildAPI
 	@(Permissions.MANAGE_CHANNELS)
 	Channel createChannel(ChannelArgs args) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/channels", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.POST;
-			req.writeJsonBody(serializeToJson(args));
-		}).deserializeJson!Channel;
+		return simpleJsonRequest(HTTPMethod.POST, args, "/channels").deserializeJson!Channel;
 	}
 
 	@(Permissions.MANAGE_CHANNELS)
 	void moveChannel(Snowflake channel, int position) const @safe
 	{
-		requestDiscordEndpoint(endpoint ~ "/channels", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PATCH;
-			req.writeJsonBody(Json(["id" : channel.toJson, "position" : Json(position)]));
-		});
+		simpleJsonRequest(HTTPMethod.PATCH, ["id" : channel.toJson, "position"
+				: Json(position)], "/channels");
 	}
 
 	GuildMember guildMember(Snowflake userID) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/members/" ~ userID.toString, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!GuildMember;
+		return simpleNullRequest(HTTPMethod.GET, "/members/" ~ userID.toString, "/members")
+			.deserializeJson!GuildMember;
 	}
 
 	GuildMember[] members(int limit = 1, Snowflake after = Snowflake.init) const @safe
@@ -704,12 +596,8 @@ struct GuildAPI
 		if (after != Snowflake.init)
 			query ~= "after=" ~ after.toString ~ "&";
 		query.length--;
-		return requestDiscordEndpoint(endpoint ~ "/members" ~ query, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!(GuildMember[]);
+		return simpleNullRequest(HTTPMethod.GET, "/members" ~ query, "/members").deserializeJson!(
+				GuildMember[]);
 	}
 
 	struct AddGuildMemberArgs
@@ -725,12 +613,8 @@ struct GuildAPI
 
 	GuildMember addMember(Snowflake userID, AddGuildMemberArgs args) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/members/" ~ userID.toString, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PUT;
-			req.writeJsonBody(args);
-		}).deserializeJson!GuildMember;
+		return simpleJsonRequest(HTTPMethod.PUT, args, "/members/" ~ userID.toString, "/members")
+			.deserializeJson!GuildMember;
 	}
 
 	struct ChangeGuildMemberArgs
@@ -746,109 +630,65 @@ struct GuildAPI
 
 	void modifyMember(Snowflake userID, ChangeGuildMemberArgs args) const @safe
 	{
-		requestDiscordEndpoint(endpoint ~ "/members/" ~ userID.toString, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PATCH;
-			req.writeJsonBody(args);
-		});
+		simpleJsonRequest(HTTPMethod.PATCH, args, "/members/" ~ userID.toString, "/members");
 	}
 
 	@(Permissions.CHANGE_NICKNAME)
 	string changeNickname(string nickname) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/members/@me/nick", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PATCH;
-			req.writeJsonBody(["nick" : nickname]);
-		}).deserializeJson!string;
+		return simpleJsonRequest(HTTPMethod.PATCH, ["nick" : nickname], "/members/@me/nick")
+			.deserializeJson!string;
 	}
 
 	@(Permissions.MANAGE_ROLES)
 	void addMemberRole(Snowflake user, Snowflake role) const @safe
 	{
-		requestDiscordEndpoint(endpoint ~ "/members/" ~ user.toString ~ "/roles/" ~ role.toString,
-				endpoint, (scope req) {
-					if (requester)
-						requester(req);
-					req.method = HTTPMethod.PUT;
-					req.writeBody(null, null);
-				});
+		simpleNullRequest(HTTPMethod.PUT,
+				"/members/" ~ user.toString ~ "/roles/" ~ role.toString, "/members/roles");
 	}
 
 	@(Permissions.MANAGE_ROLES)
 	void removeMemberRole(Snowflake user, Snowflake role) const @safe
 	{
-		requestDiscordEndpoint(endpoint ~ "/members/" ~ user.toString ~ "/roles/" ~ role.toString,
-				endpoint, (scope req) {
-					if (requester)
-						requester(req);
-					req.method = HTTPMethod.DELETE;
-					req.writeBody(null, null);
-				});
+		simpleNullRequest(HTTPMethod.DELETE,
+				"/members/" ~ user.toString ~ "/roles/" ~ role.toString, "/members/roles");
 	}
 
 	@(Permissions.KICK_MEMBERS)
 	void kickUser(Snowflake user) const @safe
 	{
-		requestDiscordEndpoint(endpoint ~ "/members/" ~ user.toString, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE, "/members/" ~ user.toString, "/members");
 	}
 
 	@(Permissions.BAN_MEMBERS)
 	Ban[] bans() const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/bans", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!(Ban[]);
+		return simpleNullRequest(HTTPMethod.GET, "/bans").deserializeJson!(Ban[]);
 	}
 
 	@(Permissions.BAN_MEMBERS)
-	void banUser(Snowflake user, string reason = "", int deleteMessageDays = 0) const @trusted
+	void banUser(Snowflake user, string reason = "", int deleteMessageDays = 0) const @safe
 	{
 		string query = "";
 		if (deleteMessageDays != 0)
 			query ~= "&delete-message-days=" ~ deleteMessageDays.to!string;
 		if (reason.length)
-			query ~= "&reason=" ~ reason.encodeComponent;
+			query ~= "&reason=" ~ (() @trusted => reason.encodeComponent)();
 		if (query.length)
-			(cast(char[])query)[0] = '?';
-		requestDiscordEndpoint(endpoint ~ "/bans/" ~ user.toString ~ query, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PUT;
-			req.writeBody(null, null);
-		});
+			(() @trusted => (cast(char[]) query)[0] = '?')();
+		simpleNullRequest(HTTPMethod.PUT, "/bans/" ~ user.toString ~ query, "/bans");
 	}
 
 	@(Permissions.BAN_MEMBERS)
 	void unbanUser(Snowflake user) const @safe
 	{
-		requestDiscordEndpoint(endpoint ~ "/bans/" ~ user.toString, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE, "/bans/" ~ user.toString, "/bans");
 	}
 
 	@(Permissions.MANAGE_ROLES)
 	Role[] unbanUser(Snowflake user) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/roles", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!(Role[]);
+		return simpleNullRequest(HTTPMethod.GET, "/roles").deserializeJson!(Role[]);
 	}
 
 	struct RoleCreateArgs
@@ -865,178 +705,103 @@ struct GuildAPI
 	@(Permissions.MANAGE_ROLES)
 	Role createRole(RoleCreateArgs role) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/roles", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.POST;
-			req.writeJsonBody(role);
-		}).deserializeJson!Role;
+		return simpleJsonRequest(HTTPMethod.POST, role, "/roles").deserializeJson!Role;
 	}
 
 	@(Permissions.MANAGE_ROLES)
 	Role[] moveRole(Snowflake role, int position) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/roles", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PATCH;
-			req.writeJsonBody(["id" : role.toJson, "position" : Json(position)]);
-		}).deserializeJson!(Role[]);
+		return simpleJsonRequest(HTTPMethod.PATCH, ["id" : role.toJson, "position"
+				: Json(position)], "/roles").deserializeJson!(Role[]);
 	}
 
 	@(Permissions.MANAGE_ROLES)
 	Role updateRole(Snowflake id, RoleCreateArgs role) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/roles/" ~ id.toString, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PATCH;
-			req.writeJsonBody(role);
-		}).deserializeJson!Role;
+		return simpleJsonRequest(HTTPMethod.PATCH, role, "/roles/" ~ id.toString, "/roles")
+			.deserializeJson!Role;
 	}
 
 	@(Permissions.MANAGE_ROLES)
 	void removeRole(Snowflake id) const @safe
 	{
-		requestDiscordEndpoint(endpoint ~ "/roles/" ~ id.toString, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE, "/roles/" ~ id.toString, "/roles");
 	}
 
 	@(Permissions.KICK_MEMBERS)
 	int checkPrune(int days) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/prune", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeJsonBody(["days" : days]);
-		})["pruned"].deserializeJson!int;
+		return simpleJsonRequest(HTTPMethod.GET, ["days" : days], "/prune")["pruned"]
+			.deserializeJson!int;
 	}
 
 	@(Permissions.KICK_MEMBERS)
 	int pruneMembers(int days) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/prune", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.POST;
-			req.writeJsonBody(["days" : days]);
-		})["pruned"].deserializeJson!int;
+		return simpleJsonRequest(HTTPMethod.POST, ["days" : days], "/prune")["pruned"]
+			.deserializeJson!int;
 	}
 
 	VoiceRegion[] voiceRegions() const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/regions", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!(VoiceRegion[]);
+		return simpleNullRequest(HTTPMethod.GET, "/regions").deserializeJson!(VoiceRegion[]);
 	}
 
 	@(Permissions.MANAGE_GUILD)
 	Invite[] invites() const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/invites", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!(Invite[]);
+		return simpleNullRequest(HTTPMethod.GET, "/invites").deserializeJson!(Invite[]);
 	}
 
 	@(Permissions.MANAGE_GUILD)
 	Integration[] integration() const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/integrations", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!(Integration[]);
+		return simpleNullRequest(HTTPMethod.GET, "/integrations").deserializeJson!(Integration[]);
 	}
 
 	@(Permissions.MANAGE_GUILD)
 	void createIntegration(string type, Snowflake id) const @safe
 	{
-		requestDiscordEndpoint(endpoint ~ "/integrations", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.POST;
-			req.writeJsonBody(["type" : Json(type), "id" : id.toJson]);
-		});
+		simpleJsonRequest(HTTPMethod.POST, ["type" : Json(type), "id" : id.toJson], "/integrations");
 	}
 
 	@(Permissions.MANAGE_GUILD)
 	void updateGuildIntegration(Snowflake id, int expireBehavior,
 			int expireGracePeriod, bool enableEmoticons) const @safe
 	{
-		requestDiscordEndpoint(endpoint ~ "/integrations/" ~ id.toString, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PATCH;
-			req.writeJsonBody(["expire_behavior" : Json(expireBehavior), "expire_grace_period"
-				: Json(expireGracePeriod), "enable_emoticons" : Json(enableEmoticons)]);
-		});
+		simpleJsonRequest(HTTPMethod.PATCH, ["expire_behavior" : Json(expireBehavior), "expire_grace_period"
+				: Json(expireGracePeriod), "enable_emoticons" : Json(enableEmoticons)],
+				"/integrations/" ~ id.toString, "/integrations");
 	}
 
 	@(Permissions.MANAGE_GUILD)
 	void deleteIntegration(Snowflake id) const @safe
 	{
-		requestDiscordEndpoint(endpoint ~ "/integrations/" ~ id.toString, endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.DELETE;
-			req.writeBody(null, null);
-		});
+		simpleNullRequest(HTTPMethod.DELETE, "/integrations/" ~ id.toString, "/integrations");
 	}
 
 	@(Permissions.MANAGE_GUILD)
 	void syncIntegration(Snowflake id) const @safe
 	{
-		requestDiscordEndpoint(endpoint ~ "/integrations/" ~ id.toString ~ "/sync",
-				endpoint, (scope req) {
-					if (requester)
-						requester(req);
-					req.method = HTTPMethod.POST;
-					req.writeBody(null, null);
-				});
+		simpleNullRequest(HTTPMethod.POST, "/integrations/" ~ id.toString ~ "/sync",
+				"/integrations/sync");
 	}
 
 	@(Permissions.MANAGE_GUILD)
 	GuildEmbed embed(Snowflake id) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/embed", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		}).deserializeJson!GuildEmbed;
+		return simpleNullRequest(HTTPMethod.GET, "/embed").deserializeJson!GuildEmbed;
 	}
 
 	@(Permissions.MANAGE_GUILD)
 	GuildEmbed updateEmbed(GuildEmbed embed) const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/embed", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.PATCH;
-			req.writeJsonBody(embed);
-		}).deserializeJson!GuildEmbed;
+		return simpleJsonRequest(HTTPMethod.PATCH, embed, "/embed").deserializeJson!GuildEmbed;
 	}
 
 	@(Permissions.MANAGE_GUILD)
 	string vanityUrl() const @safe
 	{
-		return requestDiscordEndpoint(endpoint ~ "/vanity-url", endpoint, (scope req) {
-			if (requester)
-				requester(req);
-			req.method = HTTPMethod.GET;
-			req.writeBody(null, null);
-		})["code"].opt!string(null);
+		return simpleNullRequest(HTTPMethod.GET, "/vanity-url")["code"].opt!string(null);
 	}
 }
