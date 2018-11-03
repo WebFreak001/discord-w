@@ -466,7 +466,7 @@ class DiscordGateway
 	{
 	}
 
-	void onGuildMemberAdd(GuildMember member, Snowflake guild_id)
+	void onGuildMemberAdd(GuildMember member, Snowflake guild_id, bool isChunk)
 	{
 		GuildUserCache entry;
 		entry.guildUserID = [guild_id, member.user.id];
@@ -495,7 +495,7 @@ class DiscordGateway
 	void onGuildMembersChunk(GuildMembersChunkPacket p)
 	{
 		foreach (member; p.members)
-			onGuildMemberAdd(member, p.guild_id);
+			onGuildMemberAdd(member, p.guild_id, true);
 	}
 
 	void onGuildRoleCreate(GuildRoleCreatePacket p)
@@ -671,7 +671,7 @@ class DiscordGateway
 			onGuildIntegrationsUpdate(frame.d!GuildIntegrationsUpdatePacket);
 			break;
 		case "GUILD_MEMBER_ADD":
-			onGuildMemberAdd(frame.d!GuildMember, frame.dExt!("guild_id", Snowflake));
+			onGuildMemberAdd(frame.d!GuildMember, frame.dExt!("guild_id", Snowflake), false);
 			break;
 		case "GUILD_MEMBER_REMOVE":
 			onGuildMemberRemove(frame.d!GuildMemberRemovePacket);
