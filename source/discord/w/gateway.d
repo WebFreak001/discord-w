@@ -82,6 +82,7 @@ class DiscordGateway
 	{
 		WebSocket socket;
 		Encoding encoding;
+		bool disconnected;
 		bool shouldDisconnect;
 		bool hasLastSequence;
 		int lastSequence;
@@ -209,7 +210,9 @@ class DiscordGateway
 
 	void connect(Encoding encoding = Encoding.JSON, bool handled = true)
 	{
-		assert(!socket, "Attempted to connect when already connected");
+		assert(disconnected || !socket, "Attempted to connect when already connected");
+		disconnected = false;
+		socket = null;
 		shouldDisconnect = false;
 		this.encoding = encoding;
 		while (!socket)
@@ -244,7 +247,7 @@ class DiscordGateway
 		shouldDisconnect = true;
 		if (socket && socket.connected)
 			socket.close(code);
-		socket = null;
+		disconnected = true;
 	}
 
 	void reconnect(bool resume = false)
