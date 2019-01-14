@@ -685,8 +685,7 @@ struct GuildAPI
 		simpleNullRequest(HTTPMethod.DELETE, "/bans/" ~ user.toString, "/bans");
 	}
 
-	@(Permissions.MANAGE_ROLES)
-	Role[] unbanUser(Snowflake user) const @safe
+	Role[] roles() const @safe
 	{
 		return simpleNullRequest(HTTPMethod.GET, "/roles").deserializeJson!(Role[]);
 	}
