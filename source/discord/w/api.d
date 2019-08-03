@@ -730,14 +730,14 @@ struct GuildAPI
 	@(Permissions.KICK_MEMBERS)
 	int checkPrune(int days) const @safe
 	{
-		return simpleJsonRequest(HTTPMethod.GET, ["days" : days], "/prune")["pruned"]
+		return simpleNullRequest(HTTPMethod.GET, "/prune?days=" ~ days.to!string)["pruned"]
 			.deserializeJson!int;
 	}
 
 	@(Permissions.KICK_MEMBERS)
 	int pruneMembers(int days) const @safe
 	{
-		return simpleJsonRequest(HTTPMethod.POST, ["days" : days], "/prune")["pruned"]
+		return simpleNullRequest(HTTPMethod.POST, "/prune?days=" ~ days.to!string)["pruned"]
 			.deserializeJson!int;
 	}
 
