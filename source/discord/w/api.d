@@ -21,7 +21,7 @@ alias TTS = Flag!"tts";
 
 enum discordwVersion = "1";
 
-enum discordEndpointBase = "https://discordapp.com/api/v6";
+enum discordEndpointBase = "https://discord.com/api/v6";
 
 struct HTTPRateLimit
 {
